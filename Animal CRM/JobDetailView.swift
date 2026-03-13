@@ -15,6 +15,8 @@ struct JobDetailView: View {
     @State private var showingStatusPicker = false
     @State private var isUpdating = false
     @State private var errorMessage: String?
+    @State private var invoice: Invoice?
+    @State private var showingInvoice = false
     @Environment(\.dismiss) private var dismiss
 
     init(job: Job) {
@@ -160,6 +162,43 @@ struct JobDetailView: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 5)
                 }
 
+                // Line Items (read-only)
+                if !currentJob.lineItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Line Items")
+                            .font(.headline)
+                        ForEach(currentJob.lineItems) { item in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.description ?? "Item")
+                                        .font(.subheadline)
+                                    Text("\(item.quantity) × \(String(format: "$%.2f", item.unitPrice))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(item.formattedTotal)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                            }
+                            if item.id != currentJob.lineItems.last?.id { Divider() }
+                        }
+                        Divider()
+                        HStack {
+                            Text("Total")
+                                .font(.headline)
+                            Spacer()
+                            let total = currentJob.lineItems.reduce(0) { $0 + $1.total }
+                            Text(String(format: "$%.2f", total))
+                                .font(.title3).bold()
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5)
+                }
+
                 // Amount + paid badge
                 if let amount = currentJob.formattedAmount {
                     HStack {
@@ -213,6 +252,19 @@ struct JobDetailView: View {
                         ) { updateStatus(.completed) }
                     }
 
+                    // Invoice
+                    if let inv = invoice {
+                        NavigationLink(destination: InvoiceDetailView(invoice: inv)) {
+                            Label(inv.isPaid ? "Invoice (Paid)" : "View Invoice",
+                                  systemImage: "doc.text.fill")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(inv.isPaid ? Color.green : Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                    }
+
                     // Photo upload
                     Button(action: { showingPhotoPicker = true }) {
                         Label("Add Photos", systemImage: "camera.fill")
@@ -247,6 +299,9 @@ struct JobDetailView: View {
         }
         .navigationTitle("Job Details")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            invoice = try? await apiService.fetchJobInvoice(jobId: currentJob.id)
+        }
         .sheet(isPresented: $showingPhotoPicker) {
             ImagePickerView(sourceType: .camera) { image in
                 uploadPhoto(image)

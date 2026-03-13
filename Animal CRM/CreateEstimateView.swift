@@ -2,7 +2,7 @@
 //  CreateEstimateView.swift
 //  Animal CRM
 //
-//  Multi-step create estimate: lead → location → line items → notes
+//  Create a new estimate — 5-section form using shared JobEstimateFormViewModel.
 //
 
 import SwiftUI
@@ -13,135 +13,195 @@ struct CreateEstimateView: View {
 
     var onCreated: ((Estimate) -> Void)?
 
-    @State private var selectedLead: Lead?
-    @State private var propertySelection: PropertySelection = .none
-    @State private var lineItems: [LineItemDraft] = []
-    @State private var notes = ""
-
+    @StateObject private var vm = JobEstimateFormViewModel()
     @State private var showingLeadPicker = false
     @State private var showingPropertyPicker = false
-    @State private var isSubmitting = false
     @State private var errorMessage: String?
-
-    var grandTotal: Double { lineItems.reduce(0) { $0 + $1.total } }
 
     var body: some View {
         NavigationView {
             Form {
-
-                // ── Lead ────────────────────────────────────────────
-                Section {
-                    Button { showingLeadPicker = true } label: {
-                        HStack {
-                            if let lead = selectedLead {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(lead.name).foregroundColor(.primary).fontWeight(.medium)
-                                    if let phone = lead.phone {
-                                        Text(phone).font(.caption).foregroundColor(.secondary)
-                                    }
-                                    if lead.email == nil || lead.email?.isEmpty == true {
-                                        Label("No email — sending will silently fail", systemImage: "exclamationmark.triangle.fill")
-                                            .font(.caption)
-                                            .foregroundColor(.orange)
-                                    }
-                                }
-                            } else {
-                                Text("Select a lead...").foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").foregroundColor(.secondary)
-                        }
-                    }
-                } header: { Text("Customer (Required)") }
-
-                // ── Service Location ────────────────────────────────
-                Section {
-                    if selectedLead == nil {
-                        Text("Select a customer first")
-                            .font(.subheadline).foregroundColor(.secondary)
-                    } else {
-                        Button { showingPropertyPicker = true } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(propertySelection.displayLabel)
-                                        .foregroundColor(propertySelection == .none ? .secondary : .primary)
-                                    if let sub = propertySelection.displaySubtitle {
-                                        Text(sub).font(.caption).foregroundColor(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                } header: { Text("Service Location") }
-
-                // ── Line Items ──────────────────────────────────────
-                Section {
-                    LineItemsEditorView(items: $lineItems)
-                } header: { Text("Line Items") }
-                  footer: {
-                    if !lineItems.isEmpty {
-                        Text("Total: \(String(format: "$%.2f", grandTotal))")
-                    }
-                }
-
-                // ── Notes ───────────────────────────────────────────
-                Section("Notes") {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 80)
-                }
+                customerPropertySection
+                appointmentSection
+                notesSection
+                lineItemsSection
+                settingsSection
             }
             .navigationTitle("New Estimate")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.disabled(isSubmitting)
+                    Button("Cancel") { dismiss() }.disabled(vm.isSubmitting)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await submit() } } label: {
-                        if isSubmitting { ProgressView() } else { Text("Create").bold() }
+                        if vm.isSubmitting { ProgressView() } else { Text("Create").bold() }
                     }
-                    .disabled(selectedLead == nil || isSubmitting)
+                    .disabled(vm.selectedLead == nil || vm.isSubmitting)
                 }
             }
+            .task { await vm.loadInitialData() }
             .sheet(isPresented: $showingLeadPicker) {
-                EstimateLeadPickerView(selectedLead: $selectedLead) {
-                    propertySelection = .none
+                EstimateLeadPickerView(selectedLead: $vm.selectedLead) {
+                    vm.propertySelection = .none
+                    if let id = vm.selectedLead?.id {
+                        Task { await vm.loadProperties(for: id) }
+                    }
                 }
                 .environmentObject(api)
+                .onChange(of: vm.selectedLead) { lead in
+                    if let id = lead?.id {
+                        Task { await vm.loadProperties(for: id) }
+                    }
+                }
             }
             .sheet(isPresented: $showingPropertyPicker) {
-                if let lead = selectedLead {
-                    PropertyPickerView(leadId: lead.id, selection: $propertySelection)
+                if let lead = vm.selectedLead {
+                    PropertyPickerView(leadId: lead.id, selection: $vm.propertySelection)
                         .environmentObject(api)
                 }
             }
             .alert("Error", isPresented: .constant(errorMessage != nil), actions: {
                 Button("OK") { errorMessage = nil }
             }, message: { Text(errorMessage ?? "") })
+            .alert("Validation", isPresented: .constant(vm.validationError != nil), actions: {
+                Button("OK") { vm.validationError = nil }
+            }, message: { Text(vm.validationError ?? "") })
         }
     }
 
+    // MARK: - Section 1: Customer & Property
+
+    @ViewBuilder
+    private var customerPropertySection: some View {
+        Section {
+            // Lead picker
+            Button { showingLeadPicker = true } label: {
+                HStack {
+                    if let lead = vm.selectedLead {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(lead.name).foregroundColor(.primary).fontWeight(.medium)
+                            if let phone = lead.phone {
+                                Text(phone).font(.caption).foregroundColor(.secondary)
+                            }
+                            if lead.email == nil || lead.email?.isEmpty == true {
+                                Label("No email — sending will silently fail", systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption).foregroundColor(.orange)
+                            }
+                        }
+                    } else {
+                        Text("Select customer…").foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").foregroundColor(.secondary)
+                }
+            }
+
+            // Property picker (only after lead selected)
+            if vm.selectedLead != nil {
+                if vm.propertiesLoading {
+                    HStack {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Loading locations…").font(.subheadline).foregroundColor(.secondary)
+                    }
+                } else {
+                    Button { showingPropertyPicker = true } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(vm.propertySelection.displayLabel)
+                                    .foregroundColor(vm.propertySelection == .none ? .secondary : .primary)
+                                if let sub = vm.propertySelection.displaySubtitle {
+                                    Text(sub).font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundColor(.secondary)
+                        }
+                    }
+                }
+            } else {
+                Text("Select a customer first")
+                    .font(.subheadline).foregroundColor(.secondary)
+            }
+        } header: {
+            Label("Customer & Location", systemImage: "person.fill")
+        }
+    }
+
+    // MARK: - Section 2: Appointment
+
+    @ViewBuilder
+    private var appointmentSection: some View {
+        Section {
+            Toggle("Schedule site visit", isOn: $vm.appointmentEnabled)
+            if vm.appointmentEnabled {
+                DatePicker("Date", selection: $vm.scheduledDate, displayedComponents: .date)
+                DatePicker("Start Time", selection: $vm.scheduledTime, displayedComponents: .hourAndMinute)
+                DatePicker("End Time", selection: $vm.scheduledEndTime, displayedComponents: .hourAndMinute)
+            }
+        } header: {
+            Label("Appointment", systemImage: "calendar")
+        } footer: {
+            if vm.appointmentEnabled {
+                Text("Optional site visit or consultation before quoting.")
+                    .font(.caption)
+            }
+        }
+    }
+
+    // MARK: - Section 3: Notes
+
+    @ViewBuilder
+    private var notesSection: some View {
+        Section {
+            TextEditor(text: $vm.notes)
+                .frame(minHeight: 80)
+        } header: {
+            Label("Internal Notes", systemImage: "note.text")
+        } footer: {
+            Text("Visible to your team only — not sent to the customer.")
+                .font(.caption)
+        }
+    }
+
+    // MARK: - Section 4: Line Items
+
+    @ViewBuilder
+    private var lineItemsSection: some View {
+        Section {
+            LineItemsEditorView(items: $vm.lineItems, products: vm.products)
+        } header: {
+            Label("Line Items", systemImage: "list.bullet.rectangle")
+        } footer: {
+            if !vm.lineItems.isEmpty {
+                Text("Subtotal: \(String(format: "$%.2f", vm.grandTotal))")
+            }
+        }
+    }
+
+    // MARK: - Section 5: Settings
+
+    @ViewBuilder
+    private var settingsSection: some View {
+        Section {
+            DisclosureGroup("Settings", isExpanded: $vm.settingsExpanded) {
+                Toggle("Send estimate email to customer", isOn: $vm.sendEstimateOnCreate)
+            }
+        } footer: {
+            if vm.sendEstimateOnCreate {
+                Text("Estimate link will be emailed to the customer on creation.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Submit
+
     private func submit() async {
-        guard let lead = selectedLead else { return }
-        isSubmitting = true
-        defer { isSubmitting = false }
-
-        var propertyId: Int? = nil
-        if case .existing(let p) = propertySelection { propertyId = p.id }
-
-        let reqItems = lineItems
-            .filter { !$0.description.trimmingCharacters(in: .whitespaces).isEmpty }
-            .map { $0.toRequest() }
-
-        let body = CreateEstimateRequest(
-            leadId: lead.id,
-            propertyId: propertyId,
-            notes: notes.isEmpty ? nil : notes,
-            lineItems: reqItems.isEmpty ? nil : reqItems
-        )
-
+        guard vm.validate(isJob: false) else { return }
+        vm.isSubmitting = true
+        defer { vm.isSubmitting = false }
+        let body = vm.buildEstimateRequest()
         do {
             let estimate = try await api.createEstimate(body)
             await MainActor.run {
@@ -154,7 +214,7 @@ struct CreateEstimateView: View {
     }
 }
 
-// MARK: - Lead picker with "Create New Lead" row
+// MARK: - Lead picker with "Create New Lead" row (reused from previous implementation)
 
 struct EstimateLeadPickerView: View {
     @Binding var selectedLead: Lead?
@@ -208,7 +268,7 @@ struct EstimateLeadPickerView: View {
 
                         Section {
                             Button { showingNewLead = true } label: {
-                                Label("Create New Lead", systemImage: "person.badge.plus")
+                                Label("Create New Customer", systemImage: "person.badge.plus")
                                     .foregroundColor(.blue)
                             }
                         }
@@ -248,7 +308,7 @@ struct EstimateLeadPickerView: View {
     }
 }
 
-// MARK: - Quick Create Lead (name, phone, email only)
+// MARK: - Quick Create Lead
 
 struct QuickCreateLeadView: View {
     let onCreated: (Lead) -> Void
@@ -274,7 +334,7 @@ struct QuickCreateLeadView: View {
                         .autocapitalization(.none)
                 }
             }
-            .navigationTitle("New Lead")
+            .navigationTitle("New Customer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

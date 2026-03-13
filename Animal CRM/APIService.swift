@@ -15,6 +15,8 @@ class APIService: ObservableObject {
     @Published var currentUser: User?
     @Published var authToken: String?
     
+    private var cachedProducts: [Product]?
+
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -258,6 +260,24 @@ class APIService: ObservableObject {
         let request = try buildRequest(endpoint: "/api/calls")
         let response: CallsResponse = try await performRequest(request)
         return response.calls
+    }
+
+    // MARK: - Products API
+
+    func fetchProducts() async throws -> [Product] {
+        if let cached = cachedProducts { return cached }
+        let request = try buildRequest(endpoint: "/api/products")
+        let response: ProductsResponse = try await performRequest(request)
+        cachedProducts = response.products
+        return response.products
+    }
+
+    // MARK: - Invoice API
+
+    func fetchJobInvoice(jobId: Int) async throws -> Invoice? {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/invoice")
+        let response: InvoiceResponse? = try? await performRequest(request)
+        return response?.invoice
     }
 
     // MARK: - Create Job

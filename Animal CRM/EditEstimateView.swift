@@ -18,11 +18,12 @@ struct EditEstimateView: View {
     @State private var lineItems: [LineItemDraft]
     @State private var notes: String
 
+    @State private var products: [Product] = []
     @State private var showingPropertyPicker = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
-    var grandTotal: Double { lineItems.reduce(0) { $0 + $1.total } }
+    var grandTotal: Double { lineItems.reduce(0) { $0 + $1.computedTotal } }
 
     init(estimate: Estimate, onUpdated: @escaping (Estimate) -> Void) {
         self.estimate = estimate
@@ -95,7 +96,7 @@ struct EditEstimateView: View {
 
                 // Line Items — always sent on PATCH to replace
                 Section {
-                    LineItemsEditorView(items: $lineItems)
+                    LineItemsEditorView(items: $lineItems, products: products)
                 } header: { Text("Line Items") }
                   footer: {
                     if !lineItems.isEmpty {
@@ -125,6 +126,7 @@ struct EditEstimateView: View {
                     .disabled(isSubmitting)
                 }
             }
+            .task { products = (try? await api.fetchProducts()) ?? [] }
             .sheet(isPresented: $showingPropertyPicker) {
                 PropertyPickerView(leadId: estimate.leadId, selection: $propertySelection)
                     .environmentObject(api)
