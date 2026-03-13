@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Animal CRM needs camera access to capture photos for job documentation.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Animal CRM needs photo library access to attach photos to jobs.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Animal CRM uses your location to track job site visits while you're clocked in.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Animal CRM tracks your location in the background while you are clocked in to a job so your route is recorded automatically.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+</dict>
+</plist>
