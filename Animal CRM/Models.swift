@@ -39,6 +39,7 @@ struct Job: Codable, Identifiable {
     let city: String?
     let state: String?
     let zipCode: String?
+    let leadId: Int?
     let propertyId: Int?
     let propertyName: String?
     let customerName: String?
@@ -74,6 +75,7 @@ struct Job: Codable, Identifiable {
         case scheduledDate = "scheduled_date"
         case scheduledTime = "scheduled_time"
         case zipCode = "zip_code"
+        case leadId = "lead_id"
         case propertyId = "property_id"
         case propertyName = "property_name"
         case customerName = "customer_name"
@@ -97,6 +99,7 @@ struct Job: Codable, Identifiable {
         city          = try c.decodeIfPresent(String.self, forKey: .city)
         state         = try c.decodeIfPresent(String.self, forKey: .state)
         zipCode       = try c.decodeIfPresent(String.self, forKey: .zipCode)
+        leadId        = try c.decodeIfPresent(Int.self,    forKey: .leadId)
         propertyId    = try c.decodeIfPresent(Int.self,    forKey: .propertyId)
         propertyName  = try c.decodeIfPresent(String.self, forKey: .propertyName)
         customerName  = try c.decodeIfPresent(String.self, forKey: .customerName)
@@ -673,15 +676,58 @@ struct SendMessageResponse: Codable {
 
 // MARK: - Phone Lines
 
-struct PhoneLine: Codable, Identifiable {
+struct PhoneLine: Decodable, Identifiable {
     let id: Int
     let displayName: String
     let phoneNumber: String
 
-    enum CodingKeys: String, CodingKey {
+    // Flexible decoder: tries display_name → name → friendly_name → falls back to phone_number
+    private enum CodingKeys: String, CodingKey {
         case id
         case displayName  = "display_name"
+        case name
+        case friendlyName = "friendly_name"
         case phoneNumber  = "phone_number"
+    }
+
+    init(id: Int, displayName: String, phoneNumber: String) {
+        self.id = id
+        self.displayName = displayName
+        self.phoneNumber = phoneNumber
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id          = try c.decode(Int.self, forKey: .id)
+        phoneNumber = try c.decode(String.self, forKey: .phoneNumber)
+        if let v = try? c.decode(String.self, forKey: .displayName), !v.isEmpty {
+            displayName = v
+        } else if let v = try? c.decode(String.self, forKey: .name), !v.isEmpty {
+            displayName = v
+        } else if let v = try? c.decode(String.self, forKey: .friendlyName), !v.isEmpty {
+            displayName = v
+        } else {
+            displayName = phoneNumber
+        }
+    }
+}
+
+struct PhoneLinesResponse: Decodable {
+    let phoneLines: [PhoneLine]
+
+    // Handles both camelCase ("phoneLines") and snake_case ("phone_lines") wrapper keys
+    private enum CodingKeys: String, CodingKey {
+        case phoneLines       = "phoneLines"
+        case phoneLinesSnake  = "phone_lines"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let lines = try? c.decode([PhoneLine].self, forKey: .phoneLines) {
+            phoneLines = lines
+        } else {
+            phoneLines = try c.decode([PhoneLine].self, forKey: .phoneLinesSnake)
+        }
     }
 }
 

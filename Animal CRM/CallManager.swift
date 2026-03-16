@@ -93,7 +93,8 @@ final class CallManager: NSObject, ObservableObject {
     private func freshToken() async throws -> CallToken {
         if let t = cachedToken, let at = tokenFetchedAt,
            Date().timeIntervalSince(at) < 3300 { return t }
-        let t = try await APIService.shared.fetchCallToken()
+        let phoneLineId = PhoneLineManager.shared.selectedLine?.id
+        let t = try await APIService.shared.fetchCallToken(phoneLineId: phoneLineId)
         cachedToken = t
         tokenFetchedAt = Date()
         return t

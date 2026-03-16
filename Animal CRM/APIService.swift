@@ -195,6 +195,13 @@ class APIService: ObservableObject {
         let response: LeadsResponse = try await performRequest(request)
         return response.leads
     }
+
+    func searchLeads(query: String) async throws -> [Lead] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let request = try buildRequest(endpoint: "/api/leads?q=\(encoded)")
+        let response: LeadsResponse = try await performRequest(request)
+        return response.leads
+    }
     
     func createLead(name: String, phone: String?, email: String?, address: String?, notes: String?) async throws -> Lead {
         var params: [String: Any] = ["name": name]
@@ -372,7 +379,21 @@ class APIService: ObservableObject {
 
     func fetchPhoneLines() async throws -> [PhoneLine] {
         let request = try buildRequest(endpoint: "/api/phone_lines")
-        return try await performRequest(request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+        // API may return {"phoneLines":[...]} or {"phone_lines":[...]} or a bare array
+        if let wrapped = try? decoder.decode(PhoneLinesResponse.self, from: data) {
+            return wrapped.phoneLines
+        }
+        do {
+            return try decoder.decode([PhoneLine].self, from: data)
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            print("❌ fetchPhoneLines decode error: \(error)\nRaw: \(raw)")
+            throw APIError.decodingError
+        }
     }
 
     func sendLeadMessage(leadId: Int, channel: String, body: String, subject: String? = nil, phoneLineId: Int? = nil) async throws -> SendMessageResponse {

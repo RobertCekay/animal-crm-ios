@@ -17,9 +17,10 @@ struct JobDetailView: View {
     @State private var errorMessage: String?
     @State private var invoice: Invoice?
     @State private var showingInvoice = false
-    @State private var smsConversation: SmsConversation?
-    @State private var showingSMS = false
-    @State private var isLoadingSMS = false
+    @State private var navigateToConversation: Lead?
+    @State private var isNavigatingToConversation = false
+    @State private var isFindingLead = false
+    @ObservedObject private var callManager = CallManager.shared
     @Environment(\.dismiss) private var dismiss
 
     init(job: Job) {
@@ -68,6 +69,12 @@ struct JobDetailView: View {
                             Label(name, systemImage: "person")
                         }
 
+                        // Hidden navigation link for conversation
+                        NavigationLink(
+                            destination: navigateToConversation.map { LeadConversationView(lead: $0) },
+                            isActive: $isNavigatingToConversation
+                        ) { EmptyView() }.hidden()
+
                         HStack(spacing: 12) {
                             if let phone = currentJob.customerPhone {
                                 Button {
@@ -82,16 +89,13 @@ struct JobDetailView: View {
                                         .cornerRadius(8)
                                 }
 
-                                Button {
-                                    textViaTwilio(phone)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        if isLoadingSMS {
-                                            ProgressView().scaleEffect(0.8).tint(.white)
+                                Button { openConversation() } label: {
+                                    Group {
+                                        if isFindingLead {
+                                            ProgressView().tint(.white)
                                         } else {
-                                            Image(systemName: "message.fill")
+                                            Label("Text", systemImage: "message.fill")
                                         }
-                                        Text("Text")
                                     }
                                     .font(.subheadline)
                                     .foregroundColor(.white)
@@ -100,25 +104,26 @@ struct JobDetailView: View {
                                     .background(Color.blue)
                                     .cornerRadius(8)
                                 }
-                                .disabled(isLoadingSMS)
-
-                                NavigationLink(destination: smsConversation.map {
-                                    SMSThreadView(conversation: $0).environmentObject(apiService)
-                                }, isActive: $showingSMS) {
-                                    EmptyView()
-                                }
+                                .disabled(isFindingLead)
                             }
 
-                            if let email = currentJob.customerEmail {
-                                Button(action: { emailCustomer(email) }) {
-                                    Label("Email", systemImage: "envelope.fill")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Color.orange)
-                                        .cornerRadius(8)
+                            if currentJob.customerEmail != nil {
+                                Button { openConversation() } label: {
+                                    Group {
+                                        if isFindingLead {
+                                            ProgressView().tint(.white)
+                                        } else {
+                                            Label("Email", systemImage: "envelope.fill")
+                                        }
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.orange)
+                                    .cornerRadius(8)
                                 }
+                                .disabled(isFindingLead)
                             }
                         }
                     }
@@ -333,6 +338,14 @@ struct JobDetailView: View {
                 updateStatus(newStatus)
             }
         }
+        .alert("Call Error", isPresented: Binding(
+            get: { callManager.errorMessage != nil },
+            set: { if !$0 { callManager.errorMessage = nil } }
+        )) {
+            Button("OK") { callManager.errorMessage = nil }
+        } message: {
+            Text(callManager.errorMessage ?? "")
+        }
     }
 
     private func callViaTwilio(_ phone: String) {
@@ -342,25 +355,35 @@ struct JobDetailView: View {
         )
     }
 
-    private func textViaTwilio(_ phone: String) {
-        isLoadingSMS = true
-        Task {
-            defer { isLoadingSMS = false }
-            do {
-                let conversation = try await apiService.findOrCreateSmsConversation(phone: phone)
-                await MainActor.run {
-                    smsConversation = conversation
-                    showingSMS = true
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
+    private var jobLead: Lead? {
+        guard let leadId = currentJob.leadId else { return nil }
+        return Lead(id: leadId,
+                    name: currentJob.customerName ?? "Customer",
+                    email: currentJob.customerEmail,
+                    phone: currentJob.customerPhone,
+                    address: nil, source: nil, status: nil, tags: nil,
+                    notes: nil, createdAt: Date())
     }
 
-    private func emailCustomer(_ email: String) {
-        if let url = URL(string: "mailto:\(email)") {
-            UIApplication.shared.open(url)
+    private func openConversation() {
+        if let lead = jobLead {
+            navigateToConversation = lead
+            isNavigatingToConversation = true
+            return
+        }
+        // No leadId on job — search by phone or email to find the lead automatically
+        let query = currentJob.customerPhone ?? currentJob.customerEmail ?? ""
+        guard !query.isEmpty else { return }
+        isFindingLead = true
+        Task {
+            defer { isFindingLead = false }
+            guard let leads = try? await APIService.shared.searchLeads(query: query),
+                  let match = leads.first else {
+                errorMessage = "Could not find a lead for this customer."
+                return
+            }
+            navigateToConversation = match
+            isNavigatingToConversation = true
         }
     }
 

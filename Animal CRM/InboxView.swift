@@ -152,6 +152,7 @@ struct InboxContent: View {
 
     @State private var navigateToLead: Lead?
     @State private var isNavigating = false
+    @State private var showingCompose = false
 
     var body: some View {
         Group {
@@ -162,6 +163,23 @@ struct InboxContent: View {
                 emptyState
             } else {
                 list
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showingCompose = true
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+            }
+        }
+        .sheet(isPresented: $showingCompose) {
+            NewConversationView { lead in
+                showingCompose = false
+                navigateToLead = lead
+                isNavigating = true
+                Task { await vm.load() }
             }
         }
         .onAppear {
