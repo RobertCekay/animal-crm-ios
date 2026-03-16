@@ -10,12 +10,18 @@ import Combine
 import UserNotifications
 import UIKit
 
+struct PendingThread: Equatable {
+    let id: Int
+    let platform: String
+}
+
 class PushNotificationManager: ObservableObject {
     static let shared = PushNotificationManager()
-    
+
     @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published var deviceToken: String?
     @Published var deepLinkURL: String?
+    @Published var pendingThread: PendingThread?
     
     private init() {
         // Check authorization status on initialization

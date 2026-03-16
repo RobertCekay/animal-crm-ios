@@ -87,14 +87,14 @@ struct ConversationRow: View {
                 Circle()
                     .fill(Color.blue.opacity(0.15))
                     .frame(width: 44, height: 44)
-                Text(conversation.leadName.prefix(1).uppercased())
+                Text(conversation.initials)
                     .font(.headline)
                     .foregroundColor(.blue)
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(conversation.leadName.isEmpty ? conversation.contactNumber : conversation.leadName)
+                    Text(conversation.displayName)
                         .font(.headline)
                         .lineLimit(1)
                     Spacer()
@@ -116,7 +116,7 @@ struct ConversationRow: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.blue)
+                            .background(Color.red)
                             .clipShape(Capsule())
                     }
                 }

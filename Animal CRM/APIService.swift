@@ -19,7 +19,21 @@ class APIService: ObservableObject {
 
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        // Rails returns ISO 8601 dates with and without fractional seconds.
+        // Swift's built-in .iso8601 rejects fractional seconds, so use a custom strategy.
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let withoutFractional = ISO8601DateFormatter()
+        withoutFractional.formatOptions = [.withInternetDateTime]
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let str = try container.decode(String.self)
+            if let date = withFractional.date(from: str) { return date }
+            if let date = withoutFractional.date(from: str) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "Cannot decode date: \(str)"
+            )
+        }
         return decoder
     }()
     
@@ -58,6 +72,7 @@ class APIService: ObservableObject {
         self.isAuthenticated = false
         UserDefaults.standard.removeObject(forKey: "auth_token")
         UserDefaults.standard.removeObject(forKey: "current_user")
+        AccountManager.shared.signOut()
     }
     
     // MARK: - Request Builder
@@ -80,7 +95,11 @@ class APIService: ObservableObject {
         if requiresAuth, let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        
+
+        if requiresAuth, let accountId = AccountManager.shared.currentAccount?.id {
+            request.setValue("\(accountId)", forHTTPHeaderField: "X-Account-Id")
+        }
+
         if let body = body {
             request.httpBody = body
         }
@@ -109,7 +128,8 @@ class APIService: ObservableObject {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            print("❌ Decoding error: \(error)")
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            print("❌ Decoding error for \(T.self): \(error)\nRaw response: \(raw)")
             throw APIError.decodingError
         }
     }
@@ -129,6 +149,18 @@ class APIService: ObservableObject {
         await MainActor.run {
             saveAuthToken(response.token, user: response.user)
         }
+
+        // Fetch accounts and activate the last-used one
+        let accounts = try await fetchAccounts()
+        await MainActor.run {
+            AccountManager.shared.load(accounts: accounts)
+        }
+    }
+
+    func fetchAccounts() async throws -> [Account] {
+        let request = try buildRequest(endpoint: "/api/accounts")
+        let response: AccountsResponse = try await performRequest(request)
+        return response.accounts
     }
 
     // MARK: - Jobs API
@@ -247,6 +279,14 @@ class APIService: ObservableObject {
         let _: [String: Bool] = try await performRequest(request)
     }
 
+    func findOrCreateSmsConversation(phone: String) async throws -> SmsConversation {
+        struct Body: Encodable { let phone: String }
+        let data = try JSONEncoder().encode(Body(phone: phone))
+        let request = try buildRequest(endpoint: "/api/sms/conversations", method: "POST", body: data)
+        let response: SmsConversationResponse = try await performRequest(request)
+        return response.conversation
+    }
+
     // MARK: - Calls API
 
     func fetchCallToken(phoneLineId: Int? = nil) async throws -> CallToken {
@@ -323,6 +363,34 @@ class APIService: ObservableObject {
         return try await performRequest(request)
     }
 
+    // MARK: - Lead Conversation API
+
+    func fetchLeadMessages(leadId: Int) async throws -> LeadMessagesResponse {
+        let request = try buildRequest(endpoint: "/api/leads/\(leadId)/messages")
+        return try await performRequest(request)
+    }
+
+    func fetchPhoneLines() async throws -> [PhoneLine] {
+        let request = try buildRequest(endpoint: "/api/phone_lines")
+        return try await performRequest(request)
+    }
+
+    func sendLeadMessage(leadId: Int, channel: String, body: String, subject: String? = nil, phoneLineId: Int? = nil) async throws -> SendMessageResponse {
+        struct SendBody: Encodable {
+            let channel: String
+            let body: String
+            let subject: String?
+            let phoneLineId: Int?
+            enum CodingKeys: String, CodingKey {
+                case channel, body, subject
+                case phoneLineId = "phone_line_id"
+            }
+        }
+        let data = try JSONEncoder().encode(SendBody(channel: channel, body: body, subject: subject, phoneLineId: phoneLineId))
+        let request = try buildRequest(endpoint: "/api/leads/\(leadId)/send_message", method: "POST", body: data)
+        return try await performRequest(request)
+    }
+
     // MARK: - Properties API
 
     func fetchProperties(leadId: Int) async throws -> [Property] {
@@ -336,6 +404,54 @@ class APIService: ObservableObject {
         let request = try buildRequest(endpoint: "/api/leads/\(leadId)/properties", method: "POST", body: data)
         let response: PropertyResponse = try await performRequest(request)
         return response.property
+    }
+
+    // MARK: - Conversations API
+
+    func fetchConversations(query: String? = nil) async throws -> [Conversation] {
+        var endpoint = "/api/conversations"
+        if let q = query, !q.isEmpty,
+           let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            endpoint += "?q=\(encoded)"
+        }
+        let request = try buildRequest(endpoint: endpoint)
+        let response: ConversationsResponse = try await performRequest(request)
+        return response.conversations
+    }
+
+    func fetchConversationThread(id: Int, platform: String) async throws -> ConversationThread {
+        let request = try buildRequest(endpoint: "/api/conversations/\(id)/messages?platform=\(platform)")
+        return try await performRequest(request)
+    }
+
+    func replyToConversation(id: Int, platform: String, body: String, subject: String? = nil, phoneLineId: Int? = nil) async throws -> ConversationMessage? {
+        struct ReplyBody: Encodable {
+            let platform: String
+            let body: String
+            let subject: String?
+            let phoneLineId: Int?
+            enum CodingKeys: String, CodingKey {
+                case platform, body, subject
+                case phoneLineId = "phone_line_id"
+            }
+        }
+        let data = try JSONEncoder().encode(ReplyBody(platform: platform, body: body, subject: subject, phoneLineId: phoneLineId))
+        let request = try buildRequest(endpoint: "/api/conversations/\(id)/reply", method: "POST", body: data)
+        if platform == "sms" {
+            let response: ConversationReplyResponse = try await performRequest(request)
+            return response.message
+        } else {
+            let _: OkResponse = try await performRequest(request)
+            return nil
+        }
+    }
+
+    func markConversationRead(id: Int, platform: String) async throws {
+        let request = try buildRequest(
+            endpoint: "/api/conversations/\(id)/mark_read?platform=\(platform)",
+            method: "POST"
+        )
+        let _: OkResponse = try await performRequest(request)
     }
 }
 

@@ -13,6 +13,7 @@
 
 /* Begin PBXFileReference section */
 		2BBE7BEB2F4F8A1F000F2328 /* Animal CRM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Animal CRM.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAAA00022F4F8A20000F2328 /* Animal CRM Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Animal CRM Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -34,6 +35,11 @@
 			path = "Animal CRM";
 			sourceTree = "<group>";
 		};
+		AAAA00062F4F8A20000F2328 /* Animal CRM Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Animal CRM Tests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +52,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AAAA00042F4F8A20000F2328 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -53,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				2BBE7BED2F4F8A1F000F2328 /* Animal CRM */,
+				AAAA00062F4F8A20000F2328 /* Animal CRM Tests */,
 				2BBE7BEC2F4F8A1F000F2328 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				2BBE7BEB2F4F8A1F000F2328 /* Animal CRM.app */,
+				AAAA00022F4F8A20000F2328 /* Animal CRM Tests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -92,7 +107,46 @@
 			productReference = 2BBE7BEB2F4F8A1F000F2328 /* Animal CRM.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AAAA00012F4F8A20000F2328 /* Animal CRM Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AAAA000A2F4F8A20000F2328 /* Build configuration list for PBXNativeTarget "Animal CRM Tests" */;
+			buildPhases = (
+				AAAA00032F4F8A20000F2328 /* Sources */,
+				AAAA00042F4F8A20000F2328 /* Frameworks */,
+				AAAA00052F4F8A20000F2328 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AAAA000C2F4F8A20000F2328 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AAAA00062F4F8A20000F2328 /* Animal CRM Tests */,
+			);
+			name = "Animal CRM Tests";
+			productName = "Animal CRM Tests";
+			productReference = AAAA00022F4F8A20000F2328 /* Animal CRM Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		AAAA000B2F4F8A20000F2328 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2BBE7BE32F4F8A1F000F2328 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2BBE7BEA2F4F8A1F000F2328;
+			remoteInfo = "Animal CRM";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		AAAA000C2F4F8A20000F2328 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2BBE7BEA2F4F8A1F000F2328 /* Animal CRM */;
+			targetProxy = AAAA000B2F4F8A20000F2328 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		2BBE7BE32F4F8A1F000F2328 /* Project object */ = {
@@ -104,6 +158,10 @@
 				TargetAttributes = {
 					2BBE7BEA2F4F8A1F000F2328 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					AAAA00012F4F8A20000F2328 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 2BBE7BEA2F4F8A1F000F2328;
 					};
 				};
 			};
@@ -125,6 +183,7 @@
 			projectRoot = "";
 			targets = (
 				2BBE7BEA2F4F8A1F000F2328 /* Animal CRM */,
+				AAAA00012F4F8A20000F2328 /* Animal CRM Tests */,
 			);
 		};
 /* End PBXProject section */
@@ -137,10 +196,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+
+		AAAA00052F4F8A20000F2328 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		2BBE7BE72F4F8A1F000F2328 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		AAAA00032F4F8A20000F2328 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -331,6 +406,45 @@
 			};
 			name = Release;
 		};
+
+		AAAA00082F4F8A20000F2328 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8SNTW37K73;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.animalcrm.animalcrm.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Animal CRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Animal CRM";
+			};
+			name = Debug;
+		};
+		AAAA00092F4F8A20000F2328 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8SNTW37K73;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.animalcrm.animalcrm.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Animal CRM.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Animal CRM";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -348,6 +462,16 @@
 			buildConfigurations = (
 				2BBE7BFF2F4F8A20000F2328 /* Debug */,
 				2BBE7C002F4F8A20000F2328 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
+		AAAA000A2F4F8A20000F2328 /* Build configuration list for PBXNativeTarget "Animal CRM Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAAA00082F4F8A20000F2328 /* Debug */,
+				AAAA00092F4F8A20000F2328 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

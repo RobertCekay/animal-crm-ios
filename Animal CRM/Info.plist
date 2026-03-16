@@ -10,9 +10,12 @@
 	<string>Animal CRM uses your location to track job site visits while you're clocked in.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Animal CRM tracks your location in the background while you are clocked in to a job so your route is recorded automatically.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Animal CRM needs microphone access to make calls.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>voip</string>
 	</array>
 </dict>
 </plist>

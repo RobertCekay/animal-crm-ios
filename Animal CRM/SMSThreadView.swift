@@ -2,7 +2,11 @@
 //  SMSThreadView.swift
 //  Animal CRM
 //
-//  SMS conversation thread with chat bubbles and reply
+//  SMS conversation thread with chat bubbles and reply.
+//  • Outbound messages: right-aligned purple bubble
+//  • Inbound messages:  left-aligned gray bubble
+//  • Polls every 20 seconds for new inbound messages
+//  • Optimistic send: appends immediately, confirms/reverts on API response
 //
 
 import SwiftUI
@@ -15,12 +19,16 @@ struct SMSThreadView: View {
     @State private var replyText = ""
     @State private var isSending = false
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var sendError: String?
+    @State private var pollingTask: Task<Void, Never>?
     @FocusState private var inputFocused: Bool
+
+    /// Sentinel ID used for the optimistic message placeholder.
+    private let optimisticId = Int.min
 
     var body: some View {
         VStack(spacing: 0) {
-            // Messages list
+            // Messages
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -44,6 +52,17 @@ struct SMSThreadView: View {
                 }
             }
 
+            // Send error (inline, above input bar)
+            if let err = sendError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemGray6))
+            }
+
             Divider()
 
             // Reply bar
@@ -56,32 +75,37 @@ struct SMSThreadView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .focused($inputFocused)
 
-                Button {
-                    send()
-                } label: {
+                Button { send() } label: {
                     Image(systemName: isSending ? "ellipsis.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 32))
-                        .foregroundColor(replyText.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .blue)
+                        .foregroundColor(canSend ? Color(red: 0.58, green: 0.18, blue: 0.98) : .secondary)
                 }
-                .disabled(replyText.trimmingCharacters(in: .whitespaces).isEmpty || isSending)
+                .disabled(!canSend)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .navigationTitle(conversation.leadName.isEmpty ? conversation.contactNumber : conversation.leadName)
+        .navigationTitle(conversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isLoading { ProgressView() }
             }
         }
-        .alert("Error", isPresented: .constant(errorMessage != nil), actions: {
-            Button("OK") { errorMessage = nil }
-        }, message: {
-            Text(errorMessage ?? "")
-        })
-        .onAppear { Task { await load() } }
+        .onAppear {
+            Task { await load() }
+            startPolling()
+        }
+        .onDisappear {
+            pollingTask?.cancel()
+        }
     }
+
+    private var canSend: Bool {
+        !replyText.trimmingCharacters(in: .whitespaces).isEmpty && !isSending
+    }
+
+    // MARK: - Load
 
     private func load() async {
         isLoading = true
@@ -89,50 +113,94 @@ struct SMSThreadView: View {
         do {
             let thread = try await api.fetchSmsThread(conversationId: conversation.id)
             messages = thread.messages
-        } catch {
-            errorMessage = error.localizedDescription
+        } catch { }
+    }
+
+    // MARK: - 20-second Polling
+
+    private func startPolling() {
+        pollingTask?.cancel()
+        pollingTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                guard !Task.isCancelled else { break }
+                await pollForNew()
+            }
         }
     }
+
+    private func pollForNew() async {
+        guard let thread = try? await api.fetchSmsThread(conversationId: conversation.id) else { return }
+        let existingIds = Set(messages.map(\.id))
+        let newMessages = thread.messages.filter { !existingIds.contains($0.id) && $0.id != optimisticId }
+        if !newMessages.isEmpty {
+            messages.append(contentsOf: newMessages)
+        }
+    }
+
+    // MARK: - Send (Optimistic)
 
     private func send() {
         let text = replyText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
         replyText = ""
+        sendError = nil
         isSending = true
+
+        // Append optimistic placeholder immediately
+        let optimistic = SmsMessage(
+            id: optimisticId,
+            body: text,
+            direction: "outbound",
+            status: "sending",
+            fromNumber: nil,
+            toNumber: nil,
+            read: true,
+            sentAt: Date()
+        )
+        messages.append(optimistic)
+
         Task {
             defer { isSending = false }
             do {
                 let sent = try await api.replySms(conversationId: conversation.id, body: text)
+                messages.removeAll { $0.id == optimisticId }
                 messages.append(sent)
             } catch {
-                errorMessage = error.localizedDescription
+                messages.removeAll { $0.id == optimisticId }
                 replyText = text
+                sendError = "Failed to send. Tap to retry."
             }
         }
     }
 }
 
+// MARK: - Chat Bubble
+
 struct ChatBubble: View {
     let message: SmsMessage
 
-    var isOutbound: Bool { message.direction == "outbound" }
+    private var isOutbound: Bool { message.direction == "outbound" }
+    private static let outboundColor = Color(red: 0.58, green: 0.18, blue: 0.98)
 
     var body: some View {
         HStack {
             if isOutbound { Spacer(minLength: 60) }
 
-            VStack(alignment: isOutbound ? .trailing : .leading, spacing: 2) {
+            VStack(alignment: isOutbound ? .trailing : .leading, spacing: 3) {
                 Text(message.body)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(isOutbound ? Color.blue : Color(.systemGray5))
+                    .background(isOutbound ? Self.outboundColor : Color(.systemGray5))
                     .foregroundColor(isOutbound ? .white : .primary)
                     .clipShape(BubbleShape(isOutbound: isOutbound))
 
                 HStack(spacing: 4) {
-                    Text(message.sentAt.relativeFormatted)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    if let sentAt = message.sentAt {
+                        Text(sentAt.relativeFormatted)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                     if isOutbound {
                         statusIcon(message.status)
                     }
@@ -144,7 +212,7 @@ struct ChatBubble: View {
     }
 
     @ViewBuilder
-    private func statusIcon(_ status: String) -> some View {
+    private func statusIcon(_ status: String?) -> some View {
         switch status {
         case "delivered":
             Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundColor(.green)
@@ -157,6 +225,8 @@ struct ChatBubble: View {
         }
     }
 }
+
+// MARK: - Bubble Shape
 
 struct BubbleShape: Shape {
     let isOutbound: Bool

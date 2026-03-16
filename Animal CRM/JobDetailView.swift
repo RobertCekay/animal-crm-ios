@@ -17,6 +17,9 @@ struct JobDetailView: View {
     @State private var errorMessage: String?
     @State private var invoice: Invoice?
     @State private var showingInvoice = false
+    @State private var smsConversation: SmsConversation?
+    @State private var showingSMS = false
+    @State private var isLoadingSMS = false
     @Environment(\.dismiss) private var dismiss
 
     init(job: Job) {
@@ -67,7 +70,9 @@ struct JobDetailView: View {
 
                         HStack(spacing: 12) {
                             if let phone = currentJob.customerPhone {
-                                Button(action: { callCustomer(phone) }) {
+                                Button {
+                                    callViaTwilio(phone)
+                                } label: {
                                     Label("Call", systemImage: "phone.fill")
                                         .font(.subheadline)
                                         .foregroundColor(.white)
@@ -77,14 +82,30 @@ struct JobDetailView: View {
                                         .cornerRadius(8)
                                 }
 
-                                Button(action: { textCustomer(phone) }) {
-                                    Label("Text", systemImage: "message.fill")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Color.blue)
-                                        .cornerRadius(8)
+                                Button {
+                                    textViaTwilio(phone)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if isLoadingSMS {
+                                            ProgressView().scaleEffect(0.8).tint(.white)
+                                        } else {
+                                            Image(systemName: "message.fill")
+                                        }
+                                        Text("Text")
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.blue)
+                                    .cornerRadius(8)
+                                }
+                                .disabled(isLoadingSMS)
+
+                                NavigationLink(destination: smsConversation.map {
+                                    SMSThreadView(conversation: $0).environmentObject(apiService)
+                                }, isActive: $showingSMS) {
+                                    EmptyView()
                                 }
                             }
 
@@ -314,15 +335,26 @@ struct JobDetailView: View {
         }
     }
 
-    private func callCustomer(_ phone: String) {
-        if let url = URL(string: "tel://\(phone.filter { $0.isNumber || $0 == "+" })") {
-            UIApplication.shared.open(url)
-        }
+    private func callViaTwilio(_ phone: String) {
+        CallManager.shared.dial(
+            to: phone,
+            displayName: currentJob.customerName ?? phone
+        )
     }
 
-    private func textCustomer(_ phone: String) {
-        if let url = URL(string: "sms://\(phone.filter { $0.isNumber || $0 == "+" })") {
-            UIApplication.shared.open(url)
+    private func textViaTwilio(_ phone: String) {
+        isLoadingSMS = true
+        Task {
+            defer { isLoadingSMS = false }
+            do {
+                let conversation = try await apiService.findOrCreateSmsConversation(phone: phone)
+                await MainActor.run {
+                    smsConversation = conversation
+                    showingSMS = true
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

@@ -10,6 +10,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var apiService: APIService
     @EnvironmentObject var notificationManager: PushNotificationManager
+    @ObservedObject private var accountManager = AccountManager.shared
     @State private var showLogoutAlert = false
 
     var body: some View {
@@ -32,6 +33,8 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
+
+                    AccountSwitcherView()
 
                     Button(role: .destructive) {
                         showLogoutAlert = true
@@ -176,6 +179,88 @@ struct SettingsView: View {
     
     private var buildNumber: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+    }
+}
+
+// MARK: - Account Switcher
+
+struct AccountSwitcherView: View {
+    @ObservedObject private var manager = AccountManager.shared
+
+    var body: some View {
+        if manager.accounts.count > 1 {
+            // Multi-account: show dropdown menu
+            Menu {
+                ForEach(manager.accounts) { account in
+                    Button {
+                        manager.switchTo(account)
+                    } label: {
+                        HStack {
+                            Text(account.businessName ?? account.name)
+                            if account.id == manager.currentAccount?.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                accountRow(
+                    name: manager.currentAccount?.businessName ?? manager.currentAccount?.name ?? "Select Account",
+                    role: manager.currentAccount.map { $0.isOwner ? "Owner" : "Member" },
+                    showChevron: true
+                )
+            }
+        } else if let acct = manager.currentAccount {
+            // Single account — read-only
+            accountRow(
+                name: acct.businessName ?? acct.name,
+                role: acct.isOwner ? "Owner" : "Member",
+                showChevron: false
+            )
+        } else {
+            // Accounts not yet loaded from backend
+            HStack {
+                Text("Loading account info…")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                ProgressView().scaleEffect(0.8)
+            }
+            .task {
+                if let accounts = try? await APIService.shared.fetchAccounts() {
+                    AccountManager.shared.load(accounts: accounts)
+                }
+            }
+        }
+    }
+
+    private func accountRow(name: String, role: String?, showChevron: Bool) -> some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(showChevron ? Color.indigo : Color.indigo.opacity(0.15))
+                    .frame(width: 28, height: 28)
+                Text(String(name.prefix(1)))
+                    .font(.caption.bold())
+                    .foregroundColor(showChevron ? .white : .indigo)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                    .font(.subheadline.bold())
+                    .foregroundColor(.primary)
+                if let role {
+                    Text(role)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            if showChevron {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 }
 

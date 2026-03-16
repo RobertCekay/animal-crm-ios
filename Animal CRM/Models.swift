@@ -598,18 +598,132 @@ struct CreatePropertyRequest: Encodable {
     }
 }
 
+// MARK: - Lead Conversation
+
+enum MessageType: String, Codable {
+    case email, sms, call
+}
+
+enum MessageChannel: String, CaseIterable {
+    case email = "email"
+    case sms   = "sms"
+
+    var label: String {
+        switch self {
+        case .email: return "Email"
+        case .sms:   return "Text Message"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .email: return "envelope"
+        case .sms:   return "message"
+        }
+    }
+}
+
+struct LeadMessage: Codable, Identifiable {
+    var id: String {
+        let ts = sentAt.map { "\($0.timeIntervalSince1970)" }
+            ?? startedAt.map { "\($0.timeIntervalSince1970)" }
+            ?? UUID().uuidString
+        return "\(type.rawValue)-\(ts)"
+    }
+    let type: MessageType
+    let direction: String       // "inbound" | "outbound"
+    let body: String?
+    let subject: String?
+    let status: String?
+    let duration: String?
+    let number: String?
+    let sentAt: Date?
+    let startedAt: Date?
+    let read: Bool?
+
+    var isOutbound: Bool { direction == "outbound" }
+
+    enum CodingKeys: String, CodingKey {
+        case type, direction, body, subject, status, duration, number, read
+        case sentAt     = "sent_at"
+        case startedAt  = "started_at"
+    }
+}
+
+struct LeadMessagesResponse: Codable {
+    let messages: [LeadMessage]
+    let canEmail: Bool
+    let canSms: Bool
+    let leadEmail: String?
+    let leadPhone: String?
+
+    enum CodingKeys: String, CodingKey {
+        case messages
+        case canEmail  = "can_email"
+        case canSms    = "can_sms"
+        case leadEmail = "lead_email"
+        case leadPhone = "lead_phone"
+    }
+}
+
+struct SendMessageResponse: Codable {
+    let ok: Bool?
+    let channel: String?
+    let message: LeadMessage
+}
+
+// MARK: - Phone Lines
+
+struct PhoneLine: Codable, Identifiable {
+    let id: Int
+    let displayName: String
+    let phoneNumber: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName  = "display_name"
+        case phoneNumber  = "phone_number"
+    }
+}
+
+// MARK: - Accounts
+
+struct Account: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let businessName: String?
+    let isOwner: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case businessName = "business_name"
+        case isOwner      = "is_owner"
+    }
+}
+
+struct AccountsResponse: Codable {
+    let accounts: [Account]
+}
+
 // MARK: - SMS
 
 struct SmsConversation: Codable, Identifiable {
     let id: Int
     let contactNumber: String
     let leadId: Int?
-    let leadName: String
+    let leadName: String?
     let snippet: String?
     let unreadCount: Int
     let lastMessageAt: Date?
     let phoneLineId: Int?
     let createdAt: Date
+
+    /// Lead name if available, otherwise falls back to the contact number.
+    var displayName: String {
+        if let name = leadName, !name.isEmpty { return name }
+        return contactNumber
+    }
+
+    var initials: String { String(displayName.prefix(1)).uppercased() }
 
     enum CodingKeys: String, CodingKey {
         case id, snippet
@@ -627,11 +741,13 @@ struct SmsMessage: Codable, Identifiable {
     let id: Int
     let body: String
     let direction: String   // "inbound" or "outbound"
-    let status: String
+    let status: String?
     let fromNumber: String?
     let toNumber: String?
     let read: Bool
-    let sentAt: Date
+    let sentAt: Date?
+
+    var isOutbound: Bool { direction == "outbound" }
 
     enum CodingKeys: String, CodingKey {
         case id, body, direction, status, read
@@ -710,6 +826,10 @@ struct SmsConversationsResponse: Codable {
     let conversations: [SmsConversation]
 }
 
+struct SmsConversationResponse: Codable {
+    let conversation: SmsConversation
+}
+
 struct SmsThreadResponse: Codable {
     let conversation: SmsConversation
     let messages: [SmsMessage]
@@ -747,6 +867,110 @@ struct UploadResponse: Codable {
     let success: Bool
     let url: String
     let id: Int?
+}
+
+// MARK: - Unified Conversations
+
+struct Conversation: Codable, Identifiable {
+    let id: Int
+    let platform: String          // "sms" or "email"
+    let leadId: Int?
+    let leadName: String?
+    let contactNumber: String?    // SMS only
+    let snippet: String?
+    var unreadCount: Int
+    let lastMessageAt: Date?
+
+    var isSms:   Bool { platform == "sms" }
+    var isEmail: Bool { platform == "email" }
+
+    var displayName: String {
+        if let n = leadName, !n.isEmpty { return n }
+        return contactNumber ?? "Unknown"
+    }
+    var initials: String { String(displayName.prefix(1)).uppercased() }
+
+    enum CodingKeys: String, CodingKey {
+        case id, platform, snippet
+        case leadId        = "lead_id"
+        case leadName      = "lead_name"
+        case contactNumber = "contact_number"
+        case unreadCount   = "unread_count"
+        case lastMessageAt = "last_message_at"
+    }
+}
+
+struct ConversationMessage: Codable, Identifiable {
+    let id: Int
+    let type: String              // "sms" or "email"
+    let body: String?
+    let direction: String         // "inbound" | "outbound"
+    let read: Bool
+    let sentAt: Date?
+
+    // SMS
+    let fromNumber: String?
+    let toNumber: String?
+    let status: String?
+
+    // Email
+    let subject: String?
+    let fromEmail: String?
+    let toEmail: String?
+
+    var isOutbound: Bool { direction == "outbound" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, body, direction, read, status, subject
+        case sentAt     = "sent_at"
+        case fromNumber = "from_number"
+        case toNumber   = "to_number"
+        case fromEmail  = "from_email"
+        case toEmail    = "to_email"
+    }
+}
+
+struct ConversationThread: Codable {
+    let platform: String
+    let threadId: Int
+    let leadId: Int?
+    let leadName: String?
+    let contactNumber: String?
+    let messages: [ConversationMessage]
+
+    enum CodingKeys: String, CodingKey {
+        case platform, messages
+        case threadId      = "thread_id"
+        case leadId        = "lead_id"
+        case leadName      = "lead_name"
+        case contactNumber = "contact_number"
+    }
+}
+
+struct ConversationsMeta: Codable {
+    let page: Int
+    let perPage: Int
+    let total: Int
+    let totalPages: Int
+
+    enum CodingKeys: String, CodingKey {
+        case page, total
+        case perPage     = "per_page"
+        case totalPages  = "total_pages"
+    }
+}
+
+struct ConversationsResponse: Codable {
+    let conversations: [Conversation]
+    let meta: ConversationsMeta?
+}
+
+struct ConversationReplyResponse: Codable {
+    let message: ConversationMessage
+}
+
+struct OkResponse: Codable {
+    let ok: Bool
 }
 
 struct ErrorResponse: Codable {

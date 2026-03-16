@@ -62,14 +62,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        
-        // Handle deep linking
+
+        // Unified conversation deep link: { "thread_id": 12, "platform": "sms" }
+        let threadId = userInfo["thread_id"] as? Int
+            ?? (userInfo["thread_id"] as? String).flatMap(Int.init)
+        if let threadId, let platform = userInfo["platform"] as? String {
+            DispatchQueue.main.async {
+                PushNotificationManager.shared.pendingThread = PendingThread(id: threadId, platform: platform)
+            }
+            completionHandler()
+            return
+        }
+
+        // Legacy deep link handling
         if let deepLink = userInfo["deepLink"] as? String {
             PushNotificationManager.shared.handleDeepLink(deepLink)
         } else if let urlString = userInfo["url"] as? String {
             PushNotificationManager.shared.handleDeepLink(urlString)
         }
-        
+
         completionHandler()
     }
 }

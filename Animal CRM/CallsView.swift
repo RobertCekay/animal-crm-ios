@@ -36,8 +36,21 @@ struct CallsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(calls) { call in
-                        CallRow(call: call)
-                            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                        Button {
+                            let phone = (call.direction == "outbound" ? call.toNumber : call.fromNumber)
+                                ?? call.toNumber ?? call.fromNumber
+                            if let phone {
+                                CallManager.shared.dial(
+                                    to: phone,
+                                    displayName: call.leadName ?? phone
+                                )
+                            }
+                        } label: {
+                            CallRow(call: call)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                     }
                     .listStyle(.plain)
                     .refreshable { await load() }
