@@ -31,7 +31,9 @@ struct MessagesView: View {
             }
         }
 
-        return result
+        return result.sorted {
+            ($0.scheduledDate ?? .distantPast) > ($1.scheduledDate ?? .distantPast)
+        }
     }
 
     var body: some View {

@@ -83,16 +83,25 @@ final class ClockInManager: ObservableObject {
         let lon = location?.coordinate.longitude ?? 0
         let acc = location?.horizontalAccuracy ?? 0
         
-        let closed = try await APIService.shared.clockOut(
-            timeEntryId: entry.id,
-            latitude: lat,
-            longitude: lon,
-            accuracy: acc,
-            notes: notes
-        )
+        do {
+            let closed = try await APIService.shared.clockOut(
+                timeEntryId: entry.id,
+                latitude: lat,
+                longitude: lon,
+                accuracy: acc,
+                notes: notes
+            )
+            _ = closed
+        } catch let apiError as APIError {
+            // Already clocked out on another device — sync server state silently
+            if case .serverError(let msg) = apiError, msg.contains("already") {
+                await checkStatus()
+                return
+            }
+            throw apiError
+        }
         LocationTrackingManager.shared.stopTracking()
         activeEntry = nil
-        _ = closed   // returned entry available if caller needs duration
     }
 
     // MARK: - Helpers

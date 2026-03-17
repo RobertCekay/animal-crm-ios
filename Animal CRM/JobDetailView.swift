@@ -19,7 +19,6 @@ struct JobDetailView: View {
     @State private var showingInvoice = false
     @State private var navigateToConversation: Lead?
     @State private var isNavigatingToConversation = false
-    @State private var isFindingLead = false
     @ObservedObject private var callManager = CallManager.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -89,41 +88,29 @@ struct JobDetailView: View {
                                         .cornerRadius(8)
                                 }
 
-                                Button { openConversation() } label: {
-                                    Group {
-                                        if isFindingLead {
-                                            ProgressView().tint(.white)
-                                        } else {
-                                            Label("Text", systemImage: "message.fill")
-                                        }
+                                if jobLead != nil {
+                                    Button { openConversation() } label: {
+                                        Label("Text", systemImage: "message.fill")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Color.blue)
+                                            .cornerRadius(8)
                                     }
-                                    .font(.subheadline)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.blue)
-                                    .cornerRadius(8)
                                 }
-                                .disabled(isFindingLead)
                             }
 
-                            if currentJob.customerEmail != nil {
+                            if currentJob.customerEmail != nil, jobLead != nil {
                                 Button { openConversation() } label: {
-                                    Group {
-                                        if isFindingLead {
-                                            ProgressView().tint(.white)
-                                        } else {
-                                            Label("Email", systemImage: "envelope.fill")
-                                        }
-                                    }
-                                    .font(.subheadline)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.orange)
-                                    .cornerRadius(8)
+                                    Label("Email", systemImage: "envelope.fill")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Color.orange)
+                                        .cornerRadius(8)
                                 }
-                                .disabled(isFindingLead)
                             }
                         }
                     }
@@ -366,25 +353,9 @@ struct JobDetailView: View {
     }
 
     private func openConversation() {
-        if let lead = jobLead {
-            navigateToConversation = lead
-            isNavigatingToConversation = true
-            return
-        }
-        // No leadId on job — search by phone or email to find the lead automatically
-        let query = currentJob.customerPhone ?? currentJob.customerEmail ?? ""
-        guard !query.isEmpty else { return }
-        isFindingLead = true
-        Task {
-            defer { isFindingLead = false }
-            guard let leads = try? await APIService.shared.searchLeads(query: query),
-                  let match = leads.first else {
-                errorMessage = "Could not find a lead for this customer."
-                return
-            }
-            navigateToConversation = match
-            isNavigatingToConversation = true
-        }
+        guard let lead = jobLead else { return }
+        navigateToConversation = lead
+        isNavigatingToConversation = true
     }
 
     private func openMaps() {

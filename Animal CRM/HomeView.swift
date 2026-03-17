@@ -9,10 +9,20 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var apiService = APIService.shared
+    @ObservedObject private var accountManager = AccountManager.shared
     @State private var todaysJobs: [Job] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingAddLead = false
+    @State private var statusFilter: JobStatus? = nil
+
+    private var filteredJobs: [Job] {
+        let sorted = todaysJobs.sorted {
+            ($0.scheduledTime ?? "") < ($1.scheduledTime ?? "")
+        }
+        guard let filter = statusFilter else { return sorted }
+        return sorted.filter { $0.status == filter }
+    }
 
     var body: some View {
         NavigationView {
@@ -21,29 +31,37 @@ struct HomeView: View {
                     // Time Clock Widget
                     TimeClockWidget()
 
-                    // Quick Stats
-                    QuickStatsView(jobs: todaysJobs)
-                    
+                    // Quick Stats (tappable to filter)
+                    QuickStatsView(jobs: todaysJobs, activeFilter: statusFilter) { tapped in
+                        statusFilter = (statusFilter == tapped) ? nil : tapped
+                    }
+
                     // Today's Jobs Section
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("Today's Jobs")
+                            Text(statusFilter.map { "\($0.displayName) Jobs" } ?? "Today's Jobs")
                                 .font(.headline)
                             Spacer()
-                            Text("\(todaysJobs.count)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                            if statusFilter != nil {
+                                Button("Clear") { statusFilter = nil }
+                                    .font(.subheadline)
+                                    .foregroundColor(.blue)
+                            } else {
+                                Text("\(filteredJobs.count)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         .padding(.horizontal)
-                        
+
                         if isLoading {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                        } else if todaysJobs.isEmpty {
+                        } else if filteredJobs.isEmpty {
                             EmptyJobsView()
                         } else {
-                            ForEach(todaysJobs) { job in
+                            ForEach(filteredJobs) { job in
                                 NavigationLink(destination: JobDetailView(job: job)) {
                                     JobCard(job: job)
                                 }
@@ -51,13 +69,17 @@ struct HomeView: View {
                             }
                         }
                     }
-                    
+
                     // Error Message
                     if let error = errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
-                            .padding()
+                        VStack(spacing: 8) {
+                            Text(error)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                            Button("Retry") { Task { await loadData() } }
+                                .font(.caption).bold()
+                        }
+                        .padding()
                     }
                 }
                 .padding(.vertical)
@@ -76,17 +98,20 @@ struct HomeView: View {
             .refreshable {
                 await loadData()
             }
-            .task {
+            .task(id: accountManager.currentAccount?.id) {
+                guard accountManager.currentAccount != nil else { return }
                 await loadData()
             }
         }
     }
-    
+
     private func loadData() async {
         isLoading = true
         errorMessage = nil
+        async let jobs = apiService.fetchTodaysJobs()
+        async let _ = ClockInManager.shared.checkStatus()
         do {
-            todaysJobs = try await apiService.fetchTodaysJobs()
+            todaysJobs = try await jobs
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Error loading dashboard: \(error)")
@@ -99,24 +124,17 @@ struct HomeView: View {
 
 struct QuickStatsView: View {
     let jobs: [Job]
-    
-    var scheduledCount: Int {
-        jobs.filter { $0.status == .scheduled }.count
-    }
-    
-    var inProgressCount: Int {
-        jobs.filter { $0.status == .inProgress }.count
-    }
-    
-    var completedCount: Int {
-        jobs.filter { $0.status == .completed }.count
-    }
-    
+    let activeFilter: JobStatus?
+    let onTap: (JobStatus) -> Void
+
     var body: some View {
         HStack(spacing: 12) {
-            StatCard(title: "Scheduled", count: scheduledCount, color: .blue)
-            StatCard(title: "In Progress", count: inProgressCount, color: .orange)
-            StatCard(title: "Completed", count: completedCount, color: .green)
+            StatCard(title: "Scheduled",  count: jobs.filter { $0.status == .scheduled  }.count,
+                     color: .blue,   isActive: activeFilter == .scheduled)  { onTap(.scheduled)  }
+            StatCard(title: "In Progress", count: jobs.filter { $0.status == .inProgress }.count,
+                     color: .orange, isActive: activeFilter == .inProgress) { onTap(.inProgress) }
+            StatCard(title: "Completed",  count: jobs.filter { $0.status == .completed  }.count,
+                     color: .green,  isActive: activeFilter == .completed)  { onTap(.completed)  }
         }
         .padding(.horizontal)
     }
@@ -126,21 +144,26 @@ struct StatCard: View {
     let title: String
     let count: Int
     let color: Color
-    
+    let isActive: Bool
+    let onTap: () -> Void
+
     var body: some View {
-        VStack(spacing: 4) {
-            Text("\(count)")
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                Text("\(count)")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(isActive ? .white : color)
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(isActive ? .white.opacity(0.85) : .secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isActive ? color : Color(.systemGray6))
+            .cornerRadius(10)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
+        .buttonStyle(.plain)
     }
 }
 
