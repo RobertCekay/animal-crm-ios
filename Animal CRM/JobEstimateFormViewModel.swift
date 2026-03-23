@@ -25,6 +25,11 @@ final class JobEstimateFormViewModel: ObservableObject {
     @Published var scheduledTime = Date()
     @Published var scheduledEndTime = Date()
 
+    // MARK: - Recurring (Job only)
+    @Published var isRecurring = false
+    @Published var recurrenceFrequency: RecurrenceFrequency = .weekly
+    @Published var recurrenceEndDate: Date = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
+
     // MARK: - Section 3: Notes
     @Published var notes = ""
 
@@ -94,6 +99,10 @@ final class JobEstimateFormViewModel: ObservableObject {
             validationError = "Please select a customer."
             return false
         }
+        if isJob && isRecurring && !appointmentEnabled {
+            validationError = "Recurring jobs require a scheduled appointment."
+            return false
+        }
         return true
     }
 
@@ -129,7 +138,10 @@ final class JobEstimateFormViewModel: ObservableObject {
             sendAppointmentReminder: (appointmentEnabled && sendAppointmentReminder) ? true : nil,
             appointmentReminderDays: (appointmentEnabled && sendAppointmentReminder) ? appointmentReminderDays : nil,
             depositAmount: deposit,
-            lineItems: reqItems.isEmpty ? nil : reqItems
+            lineItems: reqItems.isEmpty ? nil : reqItems,
+            jobType: isRecurring ? "recurring" : "one_time",
+            recurrenceFrequency: isRecurring ? recurrenceFrequency.rawValue : nil,
+            recurrenceEndDate: isRecurring ? dateFmt.string(from: recurrenceEndDate) : nil
         )
     }
 

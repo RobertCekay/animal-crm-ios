@@ -121,6 +121,10 @@ struct MessagesView: View {
         isLoading = true
         do {
             jobs = try await apiService.fetchAllJobs()
+        } catch is CancellationError {
+            // Task cancelled — ignore
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // URLSession cancelled — ignore
         } catch {
             print("❌ Error loading jobs: \(error)")
         }
@@ -168,6 +172,25 @@ struct JobListRow: View {
                 Text(job.title)
                     .font(.headline)
                 Spacer()
+                if job.isRecurring && !job.isChildInstance, let label = job.recurrenceLabel {
+                    Text("↻ \(label)")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.purple.opacity(0.12))
+                        .cornerRadius(5)
+                } else if job.isChildInstance {
+                    Text("↻ Instance")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.purple.opacity(0.12))
+                        .cornerRadius(5)
+                }
                 StatusBadge(status: job.status)
             }
 

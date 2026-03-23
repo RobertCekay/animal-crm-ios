@@ -74,20 +74,10 @@ struct LoginView: View {
                 .padding(.horizontal, 32)
                 
                 Spacer()
-                
-                // API Configuration Info
-                VStack(spacing: 4) {
-                    Text("Environment: \(APIConfig.useLocalhost ? "Development" : "Production")")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text("API: \(APIConfig.baseURL)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.bottom, 20)
             }
             .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
     }
     
     private func login() {

@@ -12,8 +12,6 @@ struct JobDetailView: View {
     @StateObject private var apiService = APIService.shared
     @State private var currentJob: Job
     @State private var showingPhotoPicker = false
-    @State private var showingStatusPicker = false
-    @State private var isUpdating = false
     @State private var errorMessage: String?
     @State private var invoice: Invoice?
     @State private var showingInvoice = false
@@ -21,6 +19,11 @@ struct JobDetailView: View {
     @State private var isNavigatingToConversation = false
     @ObservedObject private var callManager = CallManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var showingRecurringInstances = false
+    @State private var recurringInstances: RecurringInstancesResponse?
+    @State private var isLoadingInstances = false
+    @State private var isSendingOnMyWay = false
+    @State private var onMyWaySent = false
 
     init(job: Job) {
         self.job = job
@@ -57,6 +60,92 @@ struct JobDetailView: View {
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(12)
+
+                // Quick Actions
+                if currentJob.leadId != nil && currentJob.customerPhone != nil {
+                    Button {
+                        Task { await sendOnMyWay() }
+                    } label: {
+                        Group {
+                            if isSendingOnMyWay {
+                                ProgressView().scaleEffect(0.85)
+                            } else if onMyWaySent {
+                                Label("Sent!", systemImage: "checkmark.circle.fill")
+                            } else {
+                                Label("On My Way", systemImage: "car.fill")
+                            }
+                        }
+                        .font(.subheadline).fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(onMyWaySent ? Color.green : Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    .disabled(isSendingOnMyWay || onMyWaySent)
+                }
+
+                // Recurring banner (child instance)
+                if currentJob.isChildInstance {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(.blue)
+                        Text("Part of a recurring series")
+                            .font(.subheadline)
+                            .foregroundColor(.blue)
+                        Spacer()
+                        if let parentId = currentJob.parentJobId {
+                            Text("#\(parentId)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.08))
+                    .cornerRadius(10)
+                }
+
+                // Recurring schedule (parent job)
+                if currentJob.isRecurring && !currentJob.isChildInstance {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Recurring Schedule", systemImage: "arrow.clockwise")
+                            .font(.headline)
+                        if let label = currentJob.recurrenceLabel {
+                            Text(label)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        if let endDate = currentJob.recurrenceEndDate {
+                            Text("Until \(endDate)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        if let count = currentJob.recurringInstanceCount {
+                            Text("\(count) total occurrences")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Button {
+                            showingRecurringInstances = true
+                            Task { await loadRecurringInstances() }
+                        } label: {
+                            if isLoadingInstances {
+                                HStack(spacing: 6) {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Loading…")
+                                }
+                            } else {
+                                Label("View all occurrences", systemImage: "list.bullet")
+                            }
+                        }
+                        .font(.subheadline)
+                        .disabled(isLoadingInstances)
+                    }
+                    .padding()
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5)
+                }
 
                 // Customer Info
                 if currentJob.customerName != nil || currentJob.customerPhone != nil || currentJob.customerEmail != nil {
@@ -121,44 +210,44 @@ struct JobDetailView: View {
                 }
 
                 // Location
-                if currentJob.propertyId != nil || !currentJob.formattedAddress.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Location")
-                            .font(.headline)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Location")
+                        .font(.headline)
 
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                if let name = currentJob.propertyName {
-                                    Label(name, systemImage: "house.fill")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                }
-                                if !currentJob.formattedAddress.isEmpty {
-                                    Label(currentJob.formattedAddress, systemImage: "mappin.circle.fill")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(2)
-                                } else if currentJob.propertyId != nil {
-                                    Label("Address on file", systemImage: "mappin.circle.fill")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                            if !currentJob.formattedAddress.isEmpty {
-                                Button(action: { openMaps() }) {
-                                    Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                                        .font(.title2)
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
+                    if let name = currentJob.propertyName {
+                        Label(name, systemImage: "house.fill")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
                     }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 5)
+
+                    if !currentJob.formattedAddress.isEmpty {
+                        Label(currentJob.formattedAddress, systemImage: "mappin.circle.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                        Button(action: { openMaps() }) {
+                            Label("Get Directions", systemImage: "arrow.triangle.turn.up.right.circle.fill")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                                .font(.subheadline).fontWeight(.medium)
+                        }
+                    } else if currentJob.propertyId != nil {
+                        Label("Address on file", systemImage: "mappin.circle.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Label("No location set", systemImage: "mappin.slash")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 5)
 
                 // Notes
                 if let notes = currentJob.notes {
@@ -245,26 +334,8 @@ struct JobDetailView: View {
                     .cornerRadius(12)
                 }
 
-                // Status Actions
+                // Actions
                 VStack(spacing: 12) {
-                    // Primary status action
-                    if currentJob.status == .scheduled {
-                        ActionButton(
-                            label: "Start Job",
-                            icon: "play.circle.fill",
-                            color: .orange,
-                            isLoading: isUpdating
-                        ) { updateStatus(.inProgress) }
-
-                    } else if currentJob.status == .inProgress {
-                        ActionButton(
-                            label: "Complete Job",
-                            icon: "checkmark.circle.fill",
-                            color: .green,
-                            isLoading: isUpdating
-                        ) { updateStatus(.completed) }
-                    }
-
                     // Invoice
                     if let inv = invoice {
                         NavigationLink(destination: InvoiceDetailView(invoice: inv)) {
@@ -287,18 +358,6 @@ struct JobDetailView: View {
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
-
-                    // Generic status picker (for edge cases)
-                    if currentJob.status != .completed && currentJob.status != .cancelled {
-                        Button(action: { showingStatusPicker = true }) {
-                            Label("Change Status", systemImage: "arrow.triangle.2.circlepath")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color(.systemGray5))
-                                .foregroundColor(.primary)
-                                .cornerRadius(10)
-                        }
-                    }
                 }
 
                 // Error
@@ -313,16 +372,16 @@ struct JobDetailView: View {
         .navigationTitle("Job Details")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            invoice = try? await apiService.fetchJobInvoice(jobId: currentJob.id)
+            async let jobResult = apiService.fetchJob(id: currentJob.id)
+            async let invoiceResult = apiService.fetchJobInvoice(jobId: currentJob.id)
+            if let updated = try? await jobResult {
+                currentJob = updated
+            }
+            invoice = try? await invoiceResult
         }
         .sheet(isPresented: $showingPhotoPicker) {
             ImagePickerView(sourceType: .camera) { image in
                 uploadPhoto(image)
-            }
-        }
-        .sheet(isPresented: $showingStatusPicker) {
-            StatusPickerView(currentStatus: currentJob.status) { newStatus in
-                updateStatus(newStatus)
             }
         }
         .alert("Call Error", isPresented: Binding(
@@ -333,6 +392,21 @@ struct JobDetailView: View {
         } message: {
             Text(callManager.errorMessage ?? "")
         }
+        .sheet(isPresented: $showingRecurringInstances) {
+            if let series = recurringInstances {
+                RecurringInstancesView(series: series)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func loadRecurringInstances() async {
+        guard recurringInstances == nil else { return }
+        isLoadingInstances = true
+        defer { isLoadingInstances = false }
+        recurringInstances = try? await apiService.fetchRecurringInstances(jobId: currentJob.id)
     }
 
     private func callViaTwilio(_ phone: String) {
@@ -361,8 +435,22 @@ struct JobDetailView: View {
     private func openMaps() {
         let address = currentJob.formattedAddress
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let url = URL(string: "maps://?q=\(address)") {
+        if let url = URL(string: "maps://?daddr=\(address)") {
             UIApplication.shared.open(url)
+        }
+    }
+
+    private func sendOnMyWay() async {
+        guard let leadId = currentJob.leadId else { return }
+        isSendingOnMyWay = true
+        defer { isSendingOnMyWay = false }
+        let message = "Hi\(currentJob.customerName.map { ", \($0.components(separatedBy: " ").first ?? $0)" } ?? "")! I'm on my way to your appointment and will be there shortly."
+        let phoneLineId = PhoneLineManager.shared.selectedLine?.id
+        do {
+            _ = try await apiService.sendLeadMessage(leadId: leadId, channel: "sms", body: message, phoneLineId: phoneLineId)
+            onMyWaySent = true
+        } catch {
+            errorMessage = "Failed to send message: \(error.localizedDescription)"
         }
     }
 
@@ -370,19 +458,6 @@ struct JobDetailView: View {
         print("📸 Uploading photo for job \(currentJob.id)")
     }
 
-    private func updateStatus(_ newStatus: JobStatus) {
-        isUpdating = true
-        errorMessage = nil
-        Task {
-            defer { isUpdating = false }
-            do {
-                let updated = try await apiService.updateJobStatus(id: currentJob.id, status: newStatus)
-                await MainActor.run { currentJob = updated }
-            } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
-            }
-        }
-    }
 }
 
 // MARK: - Action Button
@@ -443,6 +518,47 @@ struct StatusPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Recurring Instances
+
+struct RecurringInstancesView: View {
+    let series: RecurringInstancesResponse
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List(series.instances) { job in
+                NavigationLink(destination: JobDetailView(job: job)) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(job.scheduledDate.map {
+                                $0.formatted(date: .abbreviated, time: .omitted)
+                            } ?? "No date")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            Spacer()
+                            StatusBadge(status: job.status)
+                        }
+                        if let time = job.scheduledTime {
+                            Text(time)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("\(series.recurrenceLabel) — \(series.totalInstances) Jobs")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
                 }
             }
         }

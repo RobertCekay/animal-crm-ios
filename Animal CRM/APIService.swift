@@ -179,12 +179,30 @@ class APIService: ObservableObject {
     
     func fetchJob(id: Int) async throws -> Job {
         let request = try buildRequest(endpoint: "/api/jobs/\(id)")
-        return try await performRequest(request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+        if let wrapped = try? decoder.decode(JobResponse.self, from: data) {
+            return wrapped.job
+        }
+        do {
+            return try decoder.decode(Job.self, from: data)
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            print("❌ fetchJob decode error: \(error)\nRaw: \(raw)")
+            throw APIError.decodingError
+        }
     }
     
     func updateJobStatus(id: Int, status: JobStatus) async throws -> Job {
         let body = try JSONEncoder().encode(["status": status.rawValue])
         let request = try buildRequest(endpoint: "/api/jobs/\(id)/status", method: "PATCH", body: body)
+        return try await performRequest(request)
+    }
+
+    func fetchRecurringInstances(jobId: Int) async throws -> RecurringInstancesResponse {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/recurring_instances")
         return try await performRequest(request)
     }
     

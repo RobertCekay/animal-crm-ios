@@ -120,7 +120,7 @@ private struct ClockedOutCard: View {
                 Picker("Select Job (optional)", selection: $selectedJobId) {
                     Text("No specific job").tag(Int?.none)
                     ForEach(jobs) { job in
-                        Text(job.title).tag(Optional(job.id))
+                        Text(job.number ?? job.title).tag(Optional(job.id))
                     }
                 }
                 .pickerStyle(.menu)

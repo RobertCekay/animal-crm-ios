@@ -170,7 +170,7 @@ struct SettingsView: View {
             }
         }
     }
-    
+
     // MARK: - Computed Properties
     
     private var appVersion: String {

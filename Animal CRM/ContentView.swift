@@ -89,6 +89,7 @@ struct MessagesCenterView: View {
             .navigationTitle("Messages")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .navigationViewStyle(.stack)
     }
 }
 

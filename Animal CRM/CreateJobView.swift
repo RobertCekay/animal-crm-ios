@@ -23,6 +23,9 @@ struct CreateJobView: View {
             Form {
                 customerPropertySection
                 appointmentSection
+                if vm.appointmentEnabled {
+                    recurringSection
+                }
                 notesSection
                 lineItemsSection
                 settingsSection
@@ -135,6 +138,29 @@ struct CreateJobView: View {
             }
         } header: {
             Label("Appointment", systemImage: "calendar")
+        }
+    }
+
+    // MARK: - Section 2b: Recurrence
+
+    @ViewBuilder
+    private var recurringSection: some View {
+        Section {
+            Toggle("Recurring Job", isOn: $vm.isRecurring)
+            if vm.isRecurring {
+                Picker("Frequency", selection: $vm.recurrenceFrequency) {
+                    ForEach(RecurrenceFrequency.allCases, id: \.self) { freq in
+                        Text(freq.displayName).tag(freq)
+                    }
+                }
+                DatePicker("End Date", selection: $vm.recurrenceEndDate,
+                           in: Date()..., displayedComponents: .date)
+                Text("A separate job and invoice will be created for each occurrence.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        } header: {
+            Label("Recurrence", systemImage: "arrow.clockwise")
         }
     }
 

@@ -46,11 +46,21 @@ struct Job: Codable, Identifiable {
     let customerPhone: String?
     let customerEmail: String?
     let notes: String?
+    let number: String?
+    let scheduledEndTime: String?
+    let invoiceId: Int?
     let totalAmount: Double?
     let isPaid: Bool
     let lineItems: [LineItem]
     let createdAt: Date
     let updatedAt: Date
+    let isRecurring: Bool
+    let isChildInstance: Bool
+    let recurrenceFrequency: String?
+    let recurrenceLabel: String?
+    let recurrenceEndDate: String?
+    let parentJobId: Int?
+    let recurringInstanceCount: Int?
 
     /// Resolved address: server merges property.address ?? job.address
     var formattedAddress: String {
@@ -71,9 +81,10 @@ struct Job: Codable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, status, address, city, state, notes
+        case id, title, status, address, city, state, notes, number
         case scheduledDate = "scheduled_date"
         case scheduledTime = "scheduled_time"
+        case scheduledEndTime = "scheduled_end_time"
         case zipCode = "zip_code"
         case leadId = "lead_id"
         case propertyId = "property_id"
@@ -81,36 +92,53 @@ struct Job: Codable, Identifiable {
         case customerName = "customer_name"
         case customerPhone = "customer_phone"
         case customerEmail = "customer_email"
+        case invoiceId = "invoice_id"
         case totalAmount = "total_amount"
         case isPaid = "is_paid"
         case lineItems = "line_items"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case isRecurring = "is_recurring"
+        case isChildInstance = "is_child_instance"
+        case recurrenceFrequency = "recurrence_frequency"
+        case recurrenceLabel = "recurrence_label"
+        case recurrenceEndDate = "recurrence_end_date"
+        case parentJobId = "parent_job_id"
+        case recurringInstanceCount = "recurring_instance_count"
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id            = try c.decode(Int.self,       forKey: .id)
-        title         = try c.decode(String.self,    forKey: .title)
-        status        = try c.decode(JobStatus.self, forKey: .status)
-        scheduledDate = try c.decodeIfPresent(Date.self,   forKey: .scheduledDate)
-        scheduledTime = try c.decodeIfPresent(String.self, forKey: .scheduledTime)
-        address       = try c.decodeIfPresent(String.self, forKey: .address)
-        city          = try c.decodeIfPresent(String.self, forKey: .city)
-        state         = try c.decodeIfPresent(String.self, forKey: .state)
-        zipCode       = try c.decodeIfPresent(String.self, forKey: .zipCode)
-        leadId        = try c.decodeIfPresent(Int.self,    forKey: .leadId)
-        propertyId    = try c.decodeIfPresent(Int.self,    forKey: .propertyId)
-        propertyName  = try c.decodeIfPresent(String.self, forKey: .propertyName)
-        customerName  = try c.decodeIfPresent(String.self, forKey: .customerName)
-        customerPhone = try c.decodeIfPresent(String.self, forKey: .customerPhone)
-        customerEmail = try c.decodeIfPresent(String.self, forKey: .customerEmail)
-        notes         = try c.decodeIfPresent(String.self, forKey: .notes)
-        isPaid        = (try? c.decode(Bool.self, forKey: .isPaid)) ?? false
-        lineItems     = (try? c.decode([LineItem].self, forKey: .lineItems)) ?? []
-        createdAt     = try c.decode(Date.self, forKey: .createdAt)
-        updatedAt     = try c.decode(Date.self, forKey: .updatedAt)
-        // totalAmount may be Double or String from Rails
+        id                   = try c.decode(Int.self,       forKey: .id)
+        title                = try c.decode(String.self,    forKey: .title)
+        status               = try c.decode(JobStatus.self, forKey: .status)
+        number               = try c.decodeIfPresent(String.self, forKey: .number)
+        scheduledDate        = try c.decodeIfPresent(Date.self,   forKey: .scheduledDate)
+        scheduledTime        = try c.decodeIfPresent(String.self, forKey: .scheduledTime)
+        scheduledEndTime     = try c.decodeIfPresent(String.self, forKey: .scheduledEndTime)
+        address              = try c.decodeIfPresent(String.self, forKey: .address)
+        city                 = try c.decodeIfPresent(String.self, forKey: .city)
+        state                = try c.decodeIfPresent(String.self, forKey: .state)
+        zipCode              = try c.decodeIfPresent(String.self, forKey: .zipCode)
+        leadId               = try c.decodeIfPresent(Int.self,    forKey: .leadId)
+        propertyId           = try c.decodeIfPresent(Int.self,    forKey: .propertyId)
+        propertyName         = try c.decodeIfPresent(String.self, forKey: .propertyName)
+        customerName         = try c.decodeIfPresent(String.self, forKey: .customerName)
+        customerPhone        = try c.decodeIfPresent(String.self, forKey: .customerPhone)
+        customerEmail        = try c.decodeIfPresent(String.self, forKey: .customerEmail)
+        notes                = try c.decodeIfPresent(String.self, forKey: .notes)
+        invoiceId            = try c.decodeIfPresent(Int.self,    forKey: .invoiceId)
+        isPaid               = (try? c.decode(Bool.self, forKey: .isPaid)) ?? false
+        lineItems            = (try? c.decode([LineItem].self, forKey: .lineItems)) ?? []
+        createdAt            = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt            = try c.decode(Date.self, forKey: .updatedAt)
+        isRecurring          = (try? c.decode(Bool.self, forKey: .isRecurring)) ?? false
+        isChildInstance      = (try? c.decode(Bool.self, forKey: .isChildInstance)) ?? false
+        recurrenceFrequency  = try c.decodeIfPresent(String.self, forKey: .recurrenceFrequency)
+        recurrenceLabel      = try c.decodeIfPresent(String.self, forKey: .recurrenceLabel)
+        recurrenceEndDate    = try c.decodeIfPresent(String.self, forKey: .recurrenceEndDate)
+        parentJobId          = try c.decodeIfPresent(Int.self,    forKey: .parentJobId)
+        recurringInstanceCount = try c.decodeIfPresent(Int.self,  forKey: .recurringInstanceCount)
         if let v = try? c.decode(Double.self, forKey: .totalAmount) {
             totalAmount = v
         } else if let s = try? c.decode(String.self, forKey: .totalAmount), let v = Double(s) {
@@ -145,6 +173,22 @@ enum JobStatus: String, Codable, CaseIterable {
         case .inProgress: return "orange"
         case .completed: return "green"
         case .cancelled: return "red"
+        }
+    }
+}
+
+enum RecurrenceFrequency: String, Codable, CaseIterable {
+    case weekly    = "weekly"
+    case biweekly  = "biweekly"
+    case monthly   = "monthly"
+    case quarterly = "quarterly"
+
+    var displayName: String {
+        switch self {
+        case .weekly:    return "Weekly"
+        case .biweekly:  return "Every 2 Weeks"
+        case .monthly:   return "Monthly"
+        case .quarterly: return "Quarterly"
         }
     }
 }
@@ -378,6 +422,9 @@ struct CreateJobRequest: Encodable {
     let appointmentReminderDays: Int?
     let depositAmount: Double?
     let lineItems: [LineItemRequest]?
+    let jobType: String?
+    let recurrenceFrequency: String?
+    let recurrenceEndDate: String?
 
     enum CodingKeys: String, CodingKey {
         case notes, address
@@ -392,6 +439,9 @@ struct CreateJobRequest: Encodable {
         case appointmentReminderDays = "appointment_reminder_days"
         case depositAmount = "deposit_amount"
         case lineItems = "line_items"
+        case jobType = "job_type"
+        case recurrenceFrequency = "recurrence_frequency"
+        case recurrenceEndDate = "recurrence_end_date"
     }
 }
 
@@ -854,6 +904,28 @@ struct AuthResponse: Codable {
 
 struct JobsResponse: Codable {
     let jobs: [Job]
+}
+
+struct JobResponse: Codable {
+    let job: Job
+}
+
+struct RecurringInstancesResponse: Codable {
+    let parentJobId: Int
+    let recurrenceFrequency: String
+    let recurrenceLabel: String
+    let recurrenceEndDate: String?
+    let totalInstances: Int
+    let instances: [Job]
+
+    enum CodingKeys: String, CodingKey {
+        case instances
+        case parentJobId         = "parent_job_id"
+        case recurrenceFrequency = "recurrence_frequency"
+        case recurrenceLabel     = "recurrence_label"
+        case recurrenceEndDate   = "recurrence_end_date"
+        case totalInstances      = "total_instances"
+    }
 }
 
 struct LeadsResponse: Codable {

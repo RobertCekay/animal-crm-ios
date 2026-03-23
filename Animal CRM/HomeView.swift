@@ -112,6 +112,10 @@ struct HomeView: View {
         async let _ = ClockInManager.shared.checkStatus()
         do {
             todaysJobs = try await jobs
+        } catch is CancellationError {
+            // Task cancelled (view disappeared mid-load) — ignore
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // URLSession cancelled — ignore
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Error loading dashboard: \(error)")
@@ -175,8 +179,15 @@ struct JobCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(job.title)
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(job.title)
+                        .font(.headline)
+                    if let number = job.number {
+                        Text(number)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 Spacer()
                 StatusBadge(status: job.status)
             }
