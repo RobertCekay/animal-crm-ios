@@ -24,6 +24,10 @@ struct JobDetailView: View {
     @State private var isLoadingInstances = false
     @State private var isSendingOnMyWay = false
     @State private var onMyWaySent = false
+    @State private var showingReviewSheet = false
+    @State private var reviewAlertMessage: String?
+    @State private var reviewToast: String?
+    @State private var updatedContactLead: Lead?
 
     init(job: Job) {
         self.job = job
@@ -31,6 +35,7 @@ struct JobDetailView: View {
     }
 
     var body: some View {
+        ZStack(alignment: .bottom) {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
 
@@ -153,7 +158,22 @@ struct JobDetailView: View {
                         Text("Customer")
                             .font(.headline)
 
-                        if let name = currentJob.customerName {
+                        if let lead = jobLead {
+                            NavigationLink(destination:
+                                ContactDetailView(
+                                    lead: updatedContactLead ?? lead,
+                                    onUpdated: { updated in updatedContactLead = updated },
+                                    onDeleted: { _ in }
+                                )
+                                .environmentObject(APIService.shared)
+                            ) {
+                                Label(
+                                    updatedContactLead?.name ?? lead.name,
+                                    systemImage: "person"
+                                )
+                                .foregroundColor(.primary)
+                            }
+                        } else if let name = currentJob.customerName {
                             Label(name, systemImage: "person")
                         }
 
@@ -358,6 +378,18 @@ struct JobDetailView: View {
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
+
+                    // Request Review
+                    Button {
+                        handleReviewButtonTap()
+                    } label: {
+                        Label("Request Review", systemImage: "star.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(red: 0.95, green: 0.70, blue: 0.05))
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
                 }
 
                 // Error
@@ -369,6 +401,21 @@ struct JobDetailView: View {
             }
             .padding()
         }
+
+        // Toast overlay
+        if let toast = reviewToast {
+            Text(toast)
+                .font(.subheadline.bold())
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Color.black.opacity(0.8))
+                .cornerRadius(24)
+                .padding(.bottom, 32)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+
+        } // ZStack
         .navigationTitle("Job Details")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -383,6 +430,28 @@ struct JobDetailView: View {
             ImagePickerView(sourceType: .camera) { image in
                 uploadPhoto(image)
             }
+        }
+        .sheet(isPresented: $showingReviewSheet) {
+            ReviewRequestSheet(
+                jobId: currentJob.id,
+                customerName: updatedContactLead?.name ?? currentJob.customerName ?? "Customer",
+                customerEmail: updatedContactLead?.email ?? currentJob.customerEmail,
+                customerPhone: updatedContactLead?.phone ?? currentJob.customerPhone
+            ) { toastMessage in
+                withAnimation { reviewToast = toastMessage }
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    withAnimation { reviewToast = nil }
+                }
+            }
+        }
+        .alert("Review Request", isPresented: Binding(
+            get: { reviewAlertMessage != nil },
+            set: { if !$0 { reviewAlertMessage = nil } }
+        )) {
+            Button("OK") { reviewAlertMessage = nil }
+        } message: {
+            Text(reviewAlertMessage ?? "")
         }
         .alert("Call Error", isPresented: Binding(
             get: { callManager.errorMessage != nil },
@@ -400,6 +469,18 @@ struct JobDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    private func handleReviewButtonTap() {
+        guard currentJob.leadId != nil else {
+            reviewAlertMessage = "This job has no customer linked."
+            return
+        }
+        guard AccountManager.shared.currentAccount?.hasReviewLink == true else {
+            reviewAlertMessage = "Add your Google Review Link in account settings to use this feature."
+            return
+        }
+        showingReviewSheet = true
     }
 
     private func loadRecurringInstances() async {

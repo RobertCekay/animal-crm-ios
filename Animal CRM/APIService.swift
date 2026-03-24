@@ -208,19 +208,38 @@ class APIService: ObservableObject {
     
     // MARK: - Leads API
     
-    func fetchLeads() async throws -> [Lead] {
-        let request = try buildRequest(endpoint: "/api/leads")
-        let response: LeadsResponse = try await performRequest(request)
-        return response.leads
+    func fetchLeads(query: String? = nil, page: Int = 1, limit: Int = 50) async throws -> LeadsResponse {
+        var parts = ["page=\(page)", "limit=\(limit)"]
+        if let q = query, !q.isEmpty,
+           let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            parts.append("q=\(encoded)")
+        }
+        let request = try buildRequest(endpoint: "/api/leads?" + parts.joined(separator: "&"))
+        return try await performRequest(request)
     }
 
-    func searchLeads(query: String) async throws -> [Lead] {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        let request = try buildRequest(endpoint: "/api/leads?q=\(encoded)")
-        let response: LeadsResponse = try await performRequest(request)
-        return response.leads
+    func fetchLead(id: Int) async throws -> Lead {
+        let request = try buildRequest(endpoint: "/api/leads/\(id)")
+        return try await performRequest(request)
     }
-    
+
+    func createLeadStructured(_ body: CreateLeadRequest) async throws -> Lead {
+        let data = try JSONEncoder().encode(body)
+        let request = try buildRequest(endpoint: "/api/leads", method: "POST", body: data)
+        return try await performRequest(request)
+    }
+
+    func updateLead(id: Int, body: CreateLeadRequest) async throws -> Lead {
+        let data = try JSONEncoder().encode(body)
+        let request = try buildRequest(endpoint: "/api/leads/\(id)", method: "PATCH", body: data)
+        return try await performRequest(request)
+    }
+
+    func deleteLead(id: Int) async throws {
+        let request = try buildRequest(endpoint: "/api/leads/\(id)", method: "DELETE")
+        _ = try await performRequest(request) as DeleteResponse
+    }
+
     func createLead(name: String, phone: String?, email: String?, address: String?, notes: String?) async throws -> Lead {
         var params: [String: Any] = ["name": name]
         if let phone = phone { params["phone"] = phone }
@@ -329,12 +348,57 @@ class APIService: ObservableObject {
 
     // MARK: - Products API
 
-    func fetchProducts() async throws -> [Product] {
-        if let cached = cachedProducts { return cached }
-        let request = try buildRequest(endpoint: "/api/products")
+    func fetchProducts(query: String? = nil) async throws -> [Product] {
+        let searching = query != nil && !query!.isEmpty
+        if !searching, let cached = cachedProducts { return cached }
+        var endpoint = "/api/products"
+        if searching, let encoded = query!.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            endpoint += "?q=\(encoded)"
+        }
+        let request = try buildRequest(endpoint: endpoint)
         let response: ProductsResponse = try await performRequest(request)
-        cachedProducts = response.products
+        if !searching { cachedProducts = response.products }
         return response.products
+    }
+
+    func createProduct(name: String, description: String?, unitPrice: Double?) async throws -> Product {
+        struct Body: Encodable {
+            let name: String
+            let description: String?
+            let unit_price: Double?
+        }
+        let body = try JSONEncoder().encode(Body(name: name, description: description, unit_price: unitPrice))
+        let request = try buildRequest(endpoint: "/api/products", method: "POST", body: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorResponse = try? decoder.decode(ErrorResponse.self, from: data) {
+                throw APIError.serverError(errorResponse.message ?? errorResponse.error)
+            }
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        struct ProductResponse: Decodable { let product: Product }
+        let product: Product
+        if let wrapped = try? decoder.decode(ProductResponse.self, from: data) {
+            product = wrapped.product
+        } else if let bare = try? decoder.decode(Product.self, from: data) {
+            product = bare
+        } else {
+            let raw = String(data: data, encoding: .utf8) ?? "<binary>"
+            print("❌ createProduct decoding failed. Raw: \(raw)")
+            throw APIError.decodingError
+        }
+        cachedProducts = nil
+        return product
+    }
+
+    // MARK: - Review Request
+
+    func sendReviewRequest(jobId: Int, channel: ReviewChannel) async throws -> ReviewRequestResponse {
+        struct Body: Encodable { let channel: String }
+        let data = try JSONEncoder().encode(Body(channel: channel.rawValue))
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/review_request", method: "POST", body: data)
+        return try await performRequest(request)
     }
 
     // MARK: - Invoice API

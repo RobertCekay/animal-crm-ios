@@ -85,7 +85,7 @@ struct LeadPickerView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            leads = try await api.fetchLeads()
+            leads = try await api.fetchLeads().leads
         } catch {
             errorMessage = error.localizedDescription
         }

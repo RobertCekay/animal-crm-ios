@@ -14,7 +14,7 @@ struct ContentView: View {
     @StateObject private var inboxVM = InboxViewModel()
 
     enum Tab {
-        case dashboard, jobs, messages, estimates, settings
+        case dashboard, contacts, jobs, messages, estimates, settings
     }
 
     var body: some View {
@@ -22,6 +22,11 @@ struct ContentView: View {
             HomeView()
                 .tabItem { Label("Dashboard", systemImage: "house.fill") }
                 .tag(Tab.dashboard)
+
+            ContactsListView()
+                .tabItem { Label("Contacts", systemImage: "person.2.fill") }
+                .tag(Tab.contacts)
+                .environmentObject(APIService.shared)
 
             MessagesView()
                 .tabItem { Label("Jobs", systemImage: "briefcase.fill") }

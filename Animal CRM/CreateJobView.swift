@@ -45,18 +45,17 @@ struct CreateJobView: View {
             }
             .task { await vm.loadInitialData() }
             .sheet(isPresented: $showingLeadPicker) {
-                EstimateLeadPickerView(selectedLead: $vm.selectedLead) {
-                    vm.propertySelection = .none
+                EstimateLeadPickerView(selectedLead: $vm.selectedLead) { newProperty in
+                    if let newProperty {
+                        vm.propertySelection = .existing(newProperty)
+                    } else {
+                        vm.propertySelection = .none
+                    }
                     if let id = vm.selectedLead?.id {
                         Task { await vm.loadProperties(for: id) }
                     }
                 }
                 .environmentObject(api)
-                .onChange(of: vm.selectedLead) { lead in
-                    if let id = lead?.id {
-                        Task { await vm.loadProperties(for: id) }
-                    }
-                }
             }
             .sheet(isPresented: $showingPropertyPicker) {
                 if let lead = vm.selectedLead {

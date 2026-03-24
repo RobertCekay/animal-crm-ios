@@ -198,18 +198,78 @@ enum RecurrenceFrequency: String, Codable, CaseIterable {
 struct Lead: Codable, Identifiable, Equatable {
     let id: Int
     let name: String
+    let firstName: String?
+    let lastName: String?
+    let businessName: String?
     let email: String?
     let phone: String?
+    let formattedPhone: String?
     let address: String?
     let source: String?
+    let sourceId: Int?
     let status: String?
+    let stageId: Int?
+    let stage: String?
+    let pipelineId: Int?
+    let pipeline: String?
+    let companyId: Int?
+    let company: String?
     let tags: [String]?
     let notes: String?
     let createdAt: Date
-    
+    let updatedAt: Date?
+    let jobsCount: Int?
+    let estimatesCount: Int?
+    let invoicesCount: Int?
+    let properties: [Property]?
+
+    init(id: Int, name: String, email: String?, phone: String?,
+         address: String?, source: String?, status: String?,
+         tags: [String]?, notes: String?, createdAt: Date,
+         firstName: String? = nil, lastName: String? = nil,
+         businessName: String? = nil, formattedPhone: String? = nil,
+         sourceId: Int? = nil, stageId: Int? = nil, stage: String? = nil,
+         pipelineId: Int? = nil, pipeline: String? = nil,
+         companyId: Int? = nil, company: String? = nil,
+         updatedAt: Date? = nil, jobsCount: Int? = nil,
+         estimatesCount: Int? = nil, invoicesCount: Int? = nil,
+         properties: [Property]? = nil) {
+        self.id = id; self.name = name; self.email = email; self.phone = phone
+        self.address = address; self.source = source; self.status = status
+        self.tags = tags; self.notes = notes; self.createdAt = createdAt
+        self.firstName = firstName; self.lastName = lastName
+        self.businessName = businessName; self.formattedPhone = formattedPhone
+        self.sourceId = sourceId; self.stageId = stageId; self.stage = stage
+        self.pipelineId = pipelineId; self.pipeline = pipeline
+        self.companyId = companyId; self.company = company
+        self.updatedAt = updatedAt; self.jobsCount = jobsCount
+        self.estimatesCount = estimatesCount; self.invoicesCount = invoicesCount
+        self.properties = properties
+    }
+
+    var initials: String {
+        let words = name.split(separator: " ")
+        if words.count >= 2 {
+            return (String(words[0].prefix(1)) + String(words[1].prefix(1))).uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, name, email, phone, address, source, status, tags, notes
+        case id, name, email, phone, address, source, status, tags, notes, stage, pipeline, company, properties
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case businessName = "business_name"
+        case formattedPhone = "formatted_phone"
+        case sourceId = "source_id"
+        case stageId = "stage_id"
+        case pipelineId = "pipeline_id"
+        case companyId = "company_id"
         case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case jobsCount = "jobs_count"
+        case estimatesCount = "estimates_count"
+        case invoicesCount = "invoices_count"
     }
 }
 
@@ -480,12 +540,22 @@ struct UpdateEstimateRequest: Encodable {
 }
 
 struct LineItemRequest: Encodable {
+    let productId: Int?
     let description: String
     let quantity: Int
     let unitPrice: Double
 
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        if let pid = productId { try c.encode(pid, forKey: .productId) }
+        try c.encode(description, forKey: .description)
+        try c.encode(quantity, forKey: .quantity)
+        try c.encode(unitPrice, forKey: .unitPrice)
+    }
+
     enum CodingKeys: String, CodingKey {
         case description, quantity
+        case productId = "product_id"
         case unitPrice = "unit_price"
     }
 }
@@ -493,16 +563,24 @@ struct LineItemRequest: Encodable {
 // MARK: - Local Mutable Draft (not Codable)
 
 struct LineItemDraft: Identifiable {
-    let id = UUID()
-    var productId: Int? = nil
-    var description: String = ""
-    var quantity: Int = 1
-    var unitPrice: Double = 0
+    let id: UUID
+    var productId: Int?
+    var description: String
+    var quantity: Int
+    var unitPrice: Double
+
+    init(id: UUID = UUID(), productId: Int? = nil, description: String = "", quantity: Int = 1, unitPrice: Double = 0) {
+        self.id = id
+        self.productId = productId
+        self.description = description
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+    }
 
     var computedTotal: Double { Double(quantity) * unitPrice }
 
     func toRequest() -> LineItemRequest {
-        LineItemRequest(description: description, quantity: quantity, unitPrice: unitPrice)
+        LineItemRequest(productId: productId, description: description, quantity: quantity, unitPrice: unitPrice)
     }
 }
 
@@ -604,7 +682,7 @@ struct Invoice: Codable, Identifiable {
 
 // MARK: - Property (service location)
 
-struct Property: Codable, Identifiable {
+struct Property: Codable, Identifiable, Equatable {
     let id: Int
     let leadId: Int
     let name: String
@@ -788,16 +866,37 @@ struct Account: Codable, Identifiable {
     let name: String
     let businessName: String?
     let isOwner: Bool
+    let hasReviewLink: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, name
-        case businessName = "business_name"
-        case isOwner      = "is_owner"
+        case businessName  = "business_name"
+        case isOwner       = "is_owner"
+        case hasReviewLink = "has_review_link"
     }
 }
 
 struct AccountsResponse: Codable {
     let accounts: [Account]
+}
+
+// MARK: - Review Request
+
+enum ReviewChannel: String, CaseIterable {
+    case email, sms
+}
+
+struct ReviewRequestResponse: Decodable {
+    let success: Bool
+    let channel: String
+    let reviewUrl: String?
+    let sentTo: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success, channel
+        case reviewUrl = "review_url"
+        case sentTo    = "sent_to"
+    }
 }
 
 // MARK: - SMS
@@ -930,6 +1029,37 @@ struct RecurringInstancesResponse: Codable {
 
 struct LeadsResponse: Codable {
     let leads: [Lead]
+    let total: Int?
+    let page: Int?
+    let limit: Int?
+    let totalPages: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case leads, total, page, limit
+        case totalPages = "total_pages"
+    }
+}
+
+struct CreateLeadRequest: Encodable {
+    let firstName: String?
+    let lastName: String?
+    let businessName: String?
+    let email: String?
+    let phone: String?
+    let address: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case email, phone, address, notes
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case businessName = "business_name"
+    }
+}
+
+struct DeleteResponse: Decodable {
+    let success: Bool?
+    let id: Int?
 }
 
 struct TimeEntriesResponse: Codable {

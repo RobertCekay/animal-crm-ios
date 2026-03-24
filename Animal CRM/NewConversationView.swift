@@ -323,7 +323,7 @@ struct NewConversationView: View {
     private func performSearch(query: String) async {
         isSearching = true
         defer { isSearching = false }
-        searchResults = (try? await APIService.shared.searchLeads(query: query)) ?? []
+        searchResults = (try? await APIService.shared.fetchLeads(query: query).leads) ?? []
     }
 
     // MARK: - Lead selection

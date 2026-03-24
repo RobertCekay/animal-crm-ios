@@ -42,18 +42,17 @@ struct CreateEstimateView: View {
             }
             .task { await vm.loadInitialData() }
             .sheet(isPresented: $showingLeadPicker) {
-                EstimateLeadPickerView(selectedLead: $vm.selectedLead) {
-                    vm.propertySelection = .none
+                EstimateLeadPickerView(selectedLead: $vm.selectedLead) { newProperty in
+                    if let newProperty {
+                        vm.propertySelection = .existing(newProperty)
+                    } else {
+                        vm.propertySelection = .none
+                    }
                     if let id = vm.selectedLead?.id {
                         Task { await vm.loadProperties(for: id) }
                     }
                 }
                 .environmentObject(api)
-                .onChange(of: vm.selectedLead) { lead in
-                    if let id = lead?.id {
-                        Task { await vm.loadProperties(for: id) }
-                    }
-                }
             }
             .sheet(isPresented: $showingPropertyPicker) {
                 if let lead = vm.selectedLead {
@@ -218,7 +217,7 @@ struct CreateEstimateView: View {
 
 struct EstimateLeadPickerView: View {
     @Binding var selectedLead: Lead?
-    let onLeadChanged: () -> Void
+    let onLeadChanged: (Property?) -> Void
 
     @EnvironmentObject var api: APIService
     @Environment(\.dismiss) private var dismiss
@@ -228,6 +227,8 @@ struct EstimateLeadPickerView: View {
     @State private var isLoading = false
     @State private var showingNewLead = false
     @State private var errorMessage: String?
+    // Used to trigger dismiss after QuickCreateLeadView closes
+    @State private var pendingProperty: Property?? = nil  // nil = no pending, .some(nil) = created with no property
 
     var filtered: [Lead] {
         search.isEmpty ? leads : leads.filter {
@@ -237,45 +238,40 @@ struct EstimateLeadPickerView: View {
 
     var body: some View {
         NavigationView {
-            Group {
+            List {
                 if isLoading {
-                    ProgressView("Loading...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Loading...").foregroundColor(.secondary).font(.subheadline)
+                    }
+                    .listRowSeparator(.hidden)
                 } else {
-                    List {
-                        ForEach(filtered) { lead in
-                            Button {
-                                selectedLead = lead
-                                onLeadChanged()
-                                dismiss()
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(lead.name).font(.headline).foregroundColor(.primary)
-                                        if let phone = lead.phone {
-                                            Text(phone).font(.caption).foregroundColor(.secondary)
-                                        }
-                                        if lead.email == nil || lead.email?.isEmpty == true {
-                                            Text("No email").font(.caption).foregroundColor(.orange)
-                                        }
+                    ForEach(filtered) { lead in
+                        Button {
+                            selectedLead = lead
+                            onLeadChanged(nil)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(lead.name).font(.headline).foregroundColor(.primary)
+                                    if let phone = lead.phone {
+                                        Text(phone).font(.caption).foregroundColor(.secondary)
                                     }
-                                    Spacer()
-                                    if selectedLead?.id == lead.id {
-                                        Image(systemName: "checkmark").foregroundColor(.blue)
+                                    if lead.email == nil || lead.email?.isEmpty == true {
+                                        Text("No email").font(.caption).foregroundColor(.orange)
                                     }
+                                }
+                                Spacer()
+                                if selectedLead?.id == lead.id {
+                                    Image(systemName: "checkmark").foregroundColor(.blue)
                                 }
                             }
                         }
-
-                        Section {
-                            Button { showingNewLead = true } label: {
-                                Label("Create New Customer", systemImage: "person.badge.plus")
-                                    .foregroundColor(.blue)
-                            }
-                        }
                     }
-                    .listStyle(.insetGrouped)
                 }
             }
+            .listStyle(.plain)
             .navigationTitle("Select Customer")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Search by name")
@@ -283,13 +279,25 @@ struct EstimateLeadPickerView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingNewLead = true
+                    } label: {
+                        Label("New Customer", systemImage: "person.badge.plus")
+                    }
+                }
             }
-            .sheet(isPresented: $showingNewLead) {
-                QuickCreateLeadView { newLead in
+            .sheet(isPresented: $showingNewLead, onDismiss: {
+                // If a lead was created, apply it and close the picker
+                if let pending = pendingProperty {
+                    onLeadChanged(pending)
+                    dismiss()
+                }
+            }) {
+                QuickCreateLeadView { newLead, newProperty in
                     leads.insert(newLead, at: 0)
                     selectedLead = newLead
-                    onLeadChanged()
-                    dismiss()
+                    pendingProperty = .some(newProperty)
                 }
                 .environmentObject(api)
             }
@@ -303,7 +311,7 @@ struct EstimateLeadPickerView: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        do { leads = try await api.fetchLeads() }
+        do { leads = try await api.fetchLeads().leads }
         catch { errorMessage = error.localizedDescription }
     }
 }
@@ -311,7 +319,7 @@ struct EstimateLeadPickerView: View {
 // MARK: - Quick Create Lead
 
 struct QuickCreateLeadView: View {
-    let onCreated: (Lead) -> Void
+    let onCreated: (Lead, Property?) -> Void
 
     @EnvironmentObject var api: APIService
     @Environment(\.dismiss) private var dismiss
@@ -319,6 +327,10 @@ struct QuickCreateLeadView: View {
     @State private var name = ""
     @State private var phone = ""
     @State private var email = ""
+    @State private var address = ""
+    @State private var city = ""
+    @State private var stateField = ""
+    @State private var zip = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
@@ -332,6 +344,19 @@ struct QuickCreateLeadView: View {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
+                }
+                Section {
+                    TextField("Street address", text: $address)
+                    TextField("City", text: $city)
+                    HStack {
+                        TextField("State", text: $stateField)
+                        TextField("ZIP", text: $zip)
+                            .keyboardType(.numberPad)
+                    }
+                } header: {
+                    Text("Service Location (optional)")
+                } footer: {
+                    Text("Will be saved as their primary service location.")
                 }
             }
             .navigationTitle("New Customer")
@@ -363,8 +388,21 @@ struct QuickCreateLeadView: View {
                 email: email.isEmpty ? nil : email,
                 address: nil, notes: nil
             )
+            var property: Property? = nil
+            if !address.isEmpty {
+                let req = CreatePropertyRequest(
+                    name: "Primary",
+                    address: address,
+                    addressLine2: nil,
+                    city: city.isEmpty ? nil : city,
+                    state: stateField.isEmpty ? nil : stateField,
+                    zip: zip.isEmpty ? nil : zip,
+                    notes: nil
+                )
+                property = try? await api.createProperty(leadId: lead.id, body: req)
+            }
             await MainActor.run {
-                onCreated(lead)
+                onCreated(lead, property)
                 dismiss()
             }
         } catch {

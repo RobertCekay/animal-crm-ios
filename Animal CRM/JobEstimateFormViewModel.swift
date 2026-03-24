@@ -74,10 +74,10 @@ final class JobEstimateFormViewModel: ObservableObject {
     // MARK: - Load
 
     func loadInitialData() async {
-        async let leadsResult: [Lead] = (try? await api.fetchLeads()) ?? []
-        async let productsResult: [Product] = (try? await api.fetchProducts()) ?? []
-        leads = await leadsResult
-        products = await productsResult
+        async let leadsResponse = api.fetchLeads()
+        async let productsResult = api.fetchProducts()
+        leads = (try? await leadsResponse.leads) ?? []
+        products = (try? await productsResult) ?? []
     }
 
     func loadProperties(for leadId: Int) async {
