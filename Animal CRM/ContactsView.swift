@@ -432,6 +432,19 @@ struct ContactDetailView: View {
                     }
                 }
 
+                // New Job
+                NavigationLink(destination:
+                    CreateJobView()
+                        .environmentObject(APIService.shared)
+                ) {
+                    Label("New Job", systemImage: "briefcase.badge.plus")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+
                 // Delete
                 Button(role: .destructive) {
                     showDeleteConfirm = true

@@ -115,6 +115,64 @@ struct EstimateDetailView: View {
                     }
                 }
 
+                // ── Signature Status ────────────────────────────────
+                if currentEstimate.isSigned {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "checkmark.seal.fill").foregroundColor(.green)
+                            Text("Accepted").font(.headline).foregroundColor(.green)
+                            Spacer()
+                            if let date = currentEstimate.signedAt {
+                                Text(date.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        if let name = currentEstimate.signedByName, !name.isEmpty {
+                            Label(name, systemImage: "person.fill")
+                                .font(.subheadline).foregroundColor(.secondary)
+                        }
+                        if let data = currentEstimate.signatureData,
+                           let dataURL = data.components(separatedBy: ",").last,
+                           let imgData = Data(base64Encoded: dataURL),
+                           let uiImage = UIImage(data: imgData) {
+                            Image(uiImage: uiImage)
+                                .resizable().scaledToFit()
+                                .frame(maxHeight: 80)
+                                .background(Color.white)
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(.separator), lineWidth: 0.5))
+                        }
+                    }
+                    .padding()
+                    .background(Color.green.opacity(0.08))
+                    .cornerRadius(12)
+                } else if currentEstimate.status == "open" || currentEstimate.status == "sent" {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Awaiting Acceptance", systemImage: "clock.fill")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.orange)
+                            if let token = currentEstimate.customerToken {
+                                Text("Copy link to share with customer")
+                                    .font(.caption).foregroundColor(.secondary)
+                                let _ = token
+                            }
+                        }
+                        Spacer()
+                        if let token = currentEstimate.customerToken {
+                            Button {
+                                UIPasteboard.general.string = "https://www.animalcrm.com/estimates/\(token)/accept"
+                            } label: {
+                                Label("Copy Link", systemImage: "link")
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color.orange.opacity(0.08))
+                    .cornerRadius(12)
+                }
+
                 // ── Timeline ────────────────────────────────────────
                 Card {
                     Text("Timeline").font(.headline)

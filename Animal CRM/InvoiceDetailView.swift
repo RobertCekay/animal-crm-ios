@@ -10,6 +10,14 @@ import SwiftUI
 struct InvoiceDetailView: View {
     let invoice: Invoice
 
+    @State private var currentInvoice: Invoice
+    @State private var showingRecordPayment = false
+
+    init(invoice: Invoice) {
+        self.invoice = invoice
+        _currentInvoice = State(initialValue: invoice)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -18,32 +26,32 @@ struct InvoiceDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(invoice.number)
+                            Text(currentInvoice.number)
                                 .font(.title2).bold()
-                            if let name = invoice.leadName {
+                            if let name = currentInvoice.leadName {
                                 Label(name, systemImage: "person.fill")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
                         }
                         Spacer()
-                        InvoiceStatusBadge(status: invoice.status, isPaid: invoice.isPaid)
+                        InvoiceStatusBadge(status: currentInvoice.status, isPaid: currentInvoice.isPaid)
                     }
 
                     HStack(spacing: 20) {
-                        if let issued = invoice.issuedOn {
+                        if let issued = currentInvoice.issuedOn {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Issued").font(.caption).foregroundColor(.secondary)
                                 Text(issued.formatted(date: .abbreviated, time: .omitted))
                                     .font(.subheadline)
                             }
                         }
-                        if let due = invoice.dueDate {
+                        if let due = currentInvoice.dueDate {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Due").font(.caption).foregroundColor(.secondary)
                                 Text(due.formatted(date: .abbreviated, time: .omitted))
                                     .font(.subheadline)
-                                    .foregroundColor(invoice.isPaid ? .secondary : .red)
+                                    .foregroundColor(currentInvoice.isPaid ? .secondary : .red)
                             }
                         }
                     }
@@ -53,10 +61,10 @@ struct InvoiceDetailView: View {
                 .cornerRadius(12)
 
                 // Line Items
-                if !invoice.lineItems.isEmpty {
+                if !currentInvoice.lineItems.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Line Items").font(.headline)
-                        ForEach(invoice.lineItems) { item in
+                        ForEach(currentInvoice.lineItems) { item in
                             HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.description ?? "Item")
@@ -69,13 +77,13 @@ struct InvoiceDetailView: View {
                                 Text(item.formattedTotal)
                                     .font(.subheadline).fontWeight(.semibold)
                             }
-                            if item.id != invoice.lineItems.last?.id { Divider() }
+                            if item.id != currentInvoice.lineItems.last?.id { Divider() }
                         }
                         Divider()
                         HStack {
                             Text("Total").font(.headline)
                             Spacer()
-                            Text(invoice.formattedTotal).font(.title3).bold()
+                            Text(currentInvoice.formattedTotal).font(.title3).bold()
                         }
                     }
                     .padding()
@@ -90,14 +98,14 @@ struct InvoiceDetailView: View {
                     HStack {
                         Text("Total")
                         Spacer()
-                        Text(invoice.formattedTotal).fontWeight(.semibold)
+                        Text(currentInvoice.formattedTotal).fontWeight(.semibold)
                     }
-                    if invoice.isPaid {
+                    if currentInvoice.isPaid {
                         HStack {
                             Image(systemName: "checkmark.seal.fill").foregroundColor(.green)
                             Text("Paid in full").foregroundColor(.green).fontWeight(.semibold)
                             Spacer()
-                            if let paidAt = invoice.paidAt {
+                            if let paidAt = currentInvoice.paidAt {
                                 Text(paidAt.formatted(date: .abbreviated, time: .omitted))
                                     .font(.caption).foregroundColor(.secondary)
                             }
@@ -106,7 +114,7 @@ struct InvoiceDetailView: View {
                         HStack {
                             Text("Amount Due").foregroundColor(.red)
                             Spacer()
-                            Text(invoice.formattedRemaining)
+                            Text(currentInvoice.formattedRemaining)
                                 .foregroundColor(.red).fontWeight(.bold)
                         }
                     }
@@ -115,11 +123,28 @@ struct InvoiceDetailView: View {
                 .background(Color(.systemBackground))
                 .cornerRadius(12)
                 .shadow(color: .black.opacity(0.05), radius: 5)
+
+                // Record Payment
+                if !currentInvoice.isPaid {
+                    Button { showingRecordPayment = true } label: {
+                        Label("Record Payment", systemImage: "dollarsign.circle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
             }
             .padding()
         }
         .navigationTitle("Invoice")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingRecordPayment) {
+            RecordPaymentView(invoice: currentInvoice) {
+                // After payment recorded, refresh would require refetch — for now just mark optimistically
+            }
+        }
     }
 }
 

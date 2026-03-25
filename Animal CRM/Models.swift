@@ -364,8 +364,15 @@ struct Estimate: Codable, Identifiable {
     let sentToCustomerAt: Date?
     let acceptedByCustomerAt: Date?
     let declinedAt: Date?
+    let signedAt: Date?
+    let signedByName: String?
+    let signatureData: String?
+    let signatureIp: String?
+    let customerToken: String?
     let createdAt: Date
     let updatedAt: Date
+
+    var isSigned: Bool { signedAt != nil }
 
     var formattedTotal: String { String(format: "$%.2f", totalAmount) }
 
@@ -389,6 +396,11 @@ struct Estimate: Codable, Identifiable {
         sentToCustomerAt      = try c.decodeIfPresent(Date.self,   forKey: .sentToCustomerAt)
         acceptedByCustomerAt  = try c.decodeIfPresent(Date.self,   forKey: .acceptedByCustomerAt)
         declinedAt            = try c.decodeIfPresent(Date.self,   forKey: .declinedAt)
+        signedAt              = try c.decodeIfPresent(Date.self,   forKey: .signedAt)
+        signedByName          = try c.decodeIfPresent(String.self, forKey: .signedByName)
+        signatureData         = try c.decodeIfPresent(String.self, forKey: .signatureData)
+        signatureIp           = try c.decodeIfPresent(String.self, forKey: .signatureIp)
+        customerToken         = try c.decodeIfPresent(String.self, forKey: .customerToken)
         createdAt             = try c.decode(Date.self,   forKey: .createdAt)
         updatedAt             = try c.decode(Date.self,   forKey: .updatedAt)
     }
@@ -424,6 +436,11 @@ struct Estimate: Codable, Identifiable {
         case sentToCustomerAt = "sent_to_customer_at"
         case acceptedByCustomerAt = "accepted_by_customer_at"
         case declinedAt = "declined_at"
+        case signedAt            = "signed_at"
+        case signedByName        = "signed_by_name"
+        case signatureData       = "signature_data"
+        case signatureIp         = "signature_ip"
+        case customerToken       = "customer_token"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -898,6 +915,74 @@ struct ReviewRequestResponse: Decodable {
         case sentTo    = "sent_to"
     }
 }
+
+// MARK: - Job Photos
+
+struct JobPhoto: Codable, Identifiable {
+    let id: Int
+    let url: String
+    let thumbnailUrl: String
+    enum CodingKeys: String, CodingKey {
+        case id, url
+        case thumbnailUrl = "thumbnail_url"
+    }
+}
+
+struct JobPhotosResponse: Decodable { let photos: [JobPhoto] }
+
+// MARK: - Checklists
+
+struct ChecklistItem: Codable {
+    let label: String
+    let completed: Bool
+    let completedAt: String?
+    enum CodingKeys: String, CodingKey {
+        case label, completed
+        case completedAt = "completed_at"
+    }
+}
+
+struct JobChecklist: Codable, Identifiable {
+    let id: Int
+    let items: [ChecklistItem]
+    let completionPercentage: Int
+    let allComplete: Bool
+    let templateId: Int?
+    let templateName: String?
+    enum CodingKeys: String, CodingKey {
+        case id, items
+        case completionPercentage = "completion_percentage"
+        case allComplete          = "all_complete"
+        case templateId           = "template_id"
+        case templateName         = "template_name"
+    }
+}
+
+struct ChecklistTemplate: Codable, Identifiable {
+    let id: Int
+    let name: String
+}
+
+struct JobChecklistsResponse: Decodable { let checklists: [JobChecklist] }
+struct JobChecklistResponse:  Decodable { let checklist: JobChecklist }
+struct ChecklistTemplatesResponse: Decodable { let templates: [ChecklistTemplate] }
+
+// MARK: - Appointments
+
+struct Appointment: Codable, Identifiable {
+    let id: Int
+    let startAt: Date
+    let endAt: Date?
+    let notes: String?
+    enum CodingKeys: String, CodingKey {
+        case id, notes
+        case startAt = "start_at"
+        case endAt   = "end_at"
+    }
+}
+
+struct AppointmentsResponse: Decodable { let appointments: [Appointment] }
+struct AppointmentResponse:  Decodable { let appointment: Appointment }
 
 // MARK: - SMS
 

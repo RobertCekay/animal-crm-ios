@@ -556,6 +556,153 @@ class APIService: ObservableObject {
         )
         let _: OkResponse = try await performRequest(request)
     }
+
+    // MARK: - Job Photos
+
+    func fetchJobPhotos(jobId: Int) async throws -> [JobPhoto] {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/photos")
+        let response: JobPhotosResponse = try await performRequest(request)
+        return response.photos
+    }
+
+    func uploadJobPhoto(jobId: Int, imageData: Data) async throws -> JobPhoto {
+        guard let url = URL(string: "\(APIConfig.baseURL)/api/jobs/\(jobId)/photos") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let accountId = AccountManager.shared.currentAccount?.id {
+            request.setValue("\(accountId)", forHTTPHeaderField: "X-Account-Id")
+        }
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"photo.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+        struct Wrapper: Decodable { let photo: JobPhoto }
+        return try decoder.decode(Wrapper.self, from: data).photo
+    }
+
+    func deleteJobPhoto(jobId: Int, photoId: Int) async throws {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/photos/\(photoId)", method: "DELETE")
+        let (_, _) = try await URLSession.shared.data(for: request)
+    }
+
+    // MARK: - Checklists
+
+    func fetchJobChecklists(jobId: Int) async throws -> [JobChecklist] {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/checklists")
+        let response: JobChecklistsResponse = try await performRequest(request)
+        return response.checklists
+    }
+
+    func createJobChecklist(jobId: Int, templateId: Int) async throws -> JobChecklist {
+        struct Body: Encodable { let template_id: Int }
+        let data = try JSONEncoder().encode(Body(template_id: templateId))
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/checklists", method: "POST", body: data)
+        let response: JobChecklistResponse = try await performRequest(request)
+        return response.checklist
+    }
+
+    func toggleChecklistItem(jobId: Int, checklistId: Int, index: Int) async throws -> JobChecklist {
+        struct Body: Encodable { let index: Int }
+        let data = try JSONEncoder().encode(Body(index: index))
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/checklists/\(checklistId)/toggle_item", method: "PATCH", body: data)
+        let response: JobChecklistResponse = try await performRequest(request)
+        return response.checklist
+    }
+
+    func deleteJobChecklist(jobId: Int, checklistId: Int) async throws {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/checklists/\(checklistId)", method: "DELETE")
+        _ = try await URLSession.shared.data(for: request)
+    }
+
+    func fetchChecklistTemplates() async throws -> [ChecklistTemplate] {
+        let request = try buildRequest(endpoint: "/api/checklist_templates")
+        let response: ChecklistTemplatesResponse = try await performRequest(request)
+        return response.templates
+    }
+
+    // MARK: - Appointments
+
+    func fetchJobAppointments(jobId: Int) async throws -> [Appointment] {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/appointments")
+        let response: AppointmentsResponse = try await performRequest(request)
+        return response.appointments
+    }
+
+    func createAppointment(jobId: Int, startAt: Date, endAt: Date?, notes: String?) async throws -> Appointment {
+        struct Body: Encodable {
+            let start_at: String
+            let end_at: String?
+            let notes: String?
+        }
+        let fmt = ISO8601DateFormatter()
+        let body = Body(start_at: fmt.string(from: startAt),
+                        end_at: endAt.map { fmt.string(from: $0) },
+                        notes: notes)
+        let data = try JSONEncoder().encode(body)
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/appointments", method: "POST", body: data)
+        let response: AppointmentResponse = try await performRequest(request)
+        return response.appointment
+    }
+
+    func updateAppointment(jobId: Int, appointmentId: Int, startAt: Date, endAt: Date?, notes: String?) async throws -> Appointment {
+        struct Body: Encodable {
+            let start_at: String
+            let end_at: String?
+            let notes: String?
+        }
+        let fmt = ISO8601DateFormatter()
+        let body = Body(start_at: fmt.string(from: startAt),
+                        end_at: endAt.map { fmt.string(from: $0) },
+                        notes: notes)
+        let data = try JSONEncoder().encode(body)
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/appointments/\(appointmentId)", method: "PATCH", body: data)
+        let response: AppointmentResponse = try await performRequest(request)
+        return response.appointment
+    }
+
+    func deleteAppointment(jobId: Int, appointmentId: Int) async throws {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/appointments/\(appointmentId)", method: "DELETE")
+        _ = try await URLSession.shared.data(for: request)
+    }
+
+    // MARK: - Invoice Creation from Field
+
+    func createJobInvoice(jobId: Int) async throws -> Invoice {
+        let request = try buildRequest(endpoint: "/api/jobs/\(jobId)/create_invoice", method: "POST")
+        return try await performRequest(request)
+    }
+
+    func sendInvoice(invoiceId: Int) async throws {
+        let request = try buildRequest(endpoint: "/api/invoices/\(invoiceId)/send", method: "POST")
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    // MARK: - Record Payment
+
+    func recordPayment(invoiceId: Int, amount: Double, method: String, note: String?) async throws {
+        struct Body: Encodable {
+            let amount: Double
+            let payment_method: String
+            let note: String?
+        }
+        let data = try JSONEncoder().encode(Body(amount: amount, payment_method: method, note: note))
+        let request = try buildRequest(endpoint: "/api/invoices/\(invoiceId)/record_payment", method: "POST", body: data)
+        _ = try await URLSession.shared.data(for: request)
+    }
 }
 
 // MARK: - API Errors

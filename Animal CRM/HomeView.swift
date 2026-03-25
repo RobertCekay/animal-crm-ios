@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var errorMessage: String?
     @State private var showingAddLead = false
     @State private var statusFilter: JobStatus? = nil
+    @State private var showingMap = false
 
     private var filteredJobs: [Job] {
         let sorted = todaysJobs.sorted {
@@ -86,6 +87,11 @@ struct HomeView: View {
             }
             .navigationTitle("Dashboard")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showingMap = true } label: {
+                        Image(systemName: "map.fill")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingAddLead = true }) {
                         Image(systemName: "plus")
@@ -94,6 +100,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showingAddLead) {
                 AddLeadView()
+            }
+            .sheet(isPresented: $showingMap) {
+                JobMapView(jobs: todaysJobs)
             }
             .refreshable {
                 await loadData()

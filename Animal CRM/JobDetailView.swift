@@ -28,6 +28,10 @@ struct JobDetailView: View {
     @State private var reviewAlertMessage: String?
     @State private var reviewToast: String?
     @State private var updatedContactLead: Lead?
+    @State private var showingCreateInvoice = false
+    @State private var showingAddAppointment = false
+    @State private var appointments: [Appointment] = []
+    @State private var editingAppointment: Appointment?
 
     init(job: Job) {
         self.job = job
@@ -229,6 +233,37 @@ struct JobDetailView: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 5)
                 }
 
+                // Photos
+                VStack(alignment: .leading, spacing: 0) {
+                    JobPhotosView(jobId: currentJob.id)
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 5)
+
+                // Checklists
+                VStack(alignment: .leading, spacing: 0) {
+                    JobChecklistView(jobId: currentJob.id)
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 5)
+
+                // Appointments
+                AppointmentsSectionView(
+                    jobId: currentJob.id,
+                    appointments: $appointments,
+                    onAdd: { showingAddAppointment = true },
+                    onEdit: { appt in editingAppointment = appt },
+                    onDelete: { appt in Task { await deleteAppointment(appt) } }
+                )
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 5)
+
                 // Location
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Location")
@@ -369,6 +404,18 @@ struct JobDetailView: View {
                         }
                     }
 
+                    // Create Invoice
+                    if invoice == nil {
+                        Button { showingCreateInvoice = true } label: {
+                            Label("Create Invoice", systemImage: "doc.badge.plus")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                        }
+                    }
+
                     // Photo upload
                     Button(action: { showingPhotoPicker = true }) {
                         Label("Add Photos", systemImage: "camera.fill")
@@ -421,10 +468,12 @@ struct JobDetailView: View {
         .task {
             async let jobResult = apiService.fetchJob(id: currentJob.id)
             async let invoiceResult = apiService.fetchJobInvoice(jobId: currentJob.id)
+            async let apptResult = apiService.fetchJobAppointments(jobId: currentJob.id)
             if let updated = try? await jobResult {
                 currentJob = updated
             }
             invoice = try? await invoiceResult
+            appointments = (try? await apptResult) ?? []
         }
         .sheet(isPresented: $showingPhotoPicker) {
             ImagePickerView(sourceType: .camera) { image in
@@ -467,6 +516,23 @@ struct JobDetailView: View {
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .sheet(isPresented: $showingCreateInvoice) {
+            CreateInvoiceView(job: currentJob) { newInvoice in
+                invoice = newInvoice
+            }
+        }
+        .sheet(isPresented: $showingAddAppointment) {
+            AppointmentFormView(jobId: currentJob.id, existing: nil) { appt in
+                appointments.append(appt)
+            }
+        }
+        .sheet(item: $editingAppointment) { appt in
+            AppointmentFormView(jobId: currentJob.id, existing: appt) { updated in
+                if let idx = appointments.firstIndex(where: { $0.id == updated.id }) {
+                    appointments[idx] = updated
+                }
             }
         }
     }
@@ -539,6 +605,69 @@ struct JobDetailView: View {
         print("📸 Uploading photo for job \(currentJob.id)")
     }
 
+    private func deleteAppointment(_ appt: Appointment) async {
+        try? await apiService.deleteAppointment(jobId: currentJob.id, appointmentId: appt.id)
+        appointments.removeAll { $0.id == appt.id }
+    }
+
+}
+
+// MARK: - Appointments Section
+
+struct AppointmentsSectionView: View {
+    let jobId: Int
+    @Binding var appointments: [Appointment]
+    let onAdd: () -> Void
+    let onEdit: (Appointment) -> Void
+    let onDelete: (Appointment) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Appointments").font(.headline)
+                Spacer()
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.blue)
+                }
+            }
+
+            if appointments.isEmpty {
+                Text("No appointments scheduled")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(appointments) { appt in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label(appt.startAt.formatted(date: .abbreviated, time: .shortened),
+                                  systemImage: "calendar")
+                                .font(.subheadline)
+                            Spacer()
+                            Button { onEdit(appt) } label: {
+                                Image(systemName: "pencil").foregroundColor(.blue)
+                            }
+                            .buttonStyle(.plain)
+                            Button { onDelete(appt) } label: {
+                                Image(systemName: "trash").foregroundColor(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if let end = appt.endAt {
+                            Text("Until \(end.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        if let notes = appt.notes, !notes.isEmpty {
+                            Text(notes).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    if appt.id != appointments.last?.id { Divider() }
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Action Button
