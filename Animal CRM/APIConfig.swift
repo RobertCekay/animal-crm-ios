@@ -12,7 +12,7 @@ struct APIConfig {
     // MARK: - Configuration Toggle
     
     /// Set to `true` to use localhost for development, `false` for production
-    static let useLocalhost = true
+    static let useLocalhost = false
     
     // MARK: - Development Configuration
     
