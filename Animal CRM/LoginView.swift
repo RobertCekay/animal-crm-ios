@@ -21,9 +21,11 @@ struct LoginView: View {
                 
                 // Logo/Title
                 VStack(spacing: 8) {
-                    Image(systemName: "pawprint.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundColor(.blue)
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 100, height: 100)
+                        .cornerRadius(22)
                     
                     Text("Animal CRM")
                         .font(.largeTitle)
